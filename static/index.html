@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MadeGood — Paid System</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Password gate -->
+  <div id="gate" class="gate">
+    <div class="gate-box">
+      <div class="gate-logo">Agency 8</div>
+      <div class="gate-sub">MadeGood Paid System</div>
+      <input type="password" id="gate-pw" placeholder="Team password" autocomplete="current-password">
+      <button class="btn-pri" id="gate-btn">Enter</button>
+      <div class="gate-err hidden" id="gate-err">Wrong password</div>
+    </div>
+  </div>
+
+  <!-- Main app (hidden until auth) -->
+  <div id="app" class="app hidden">
+    <header class="header">
+      <div class="header-inner">
+        <div class="header-left">
+          <span class="logo">Agency 8</span>
+          <span class="logo-sub">MadeGood Paid System</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Tab bar -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="master-list">1. Master Lists</button>
+      <button class="tab-btn" data-tab="outreach">2. Outreach</button>
+      <button class="tab-btn" data-tab="paid-plan">3. Paid Plan</button>
+      <button class="tab-btn" data-tab="content-cal">4. Content Calendar</button>
+      <button class="tab-btn" data-tab="content-review">5. Content Review</button>
+      <button class="tab-btn" data-tab="live-posts">6. Live Posts</button>
+      <button class="tab-btn" data-tab="payments">7. Payment Status</button>
+      <button class="tab-btn" data-tab="budget">Budget Tracker</button>
+      <button class="tab-btn" data-tab="reporting">Reporting</button>
+    </nav>
+
+    <!-- Tab panels -->
+    <div class="tab-content">
+
+      <!-- 1. Master Lists -->
+      <div id="tab-master-list" class="tab-panel active">
+        <div class="panel-header">
+          <div class="panel-title-row">
+            <h2>Master Lists</h2>
+            <div class="list-toggle">
+              <button class="list-btn active" data-list="INT">Internal</button>
+              <button class="list-btn" data-list="EXT">External</button>
+            </div>
+          </div>
+          <div class="panel-actions">
+            <input type="search" class="search-box" id="ml-search" placeholder="Search name, handle, vertical…">
+            <select id="ml-filter-tier" class="filter-sel"><option value="">All tiers</option><option>Nano</option><option>Micro</option><option>Macro</option><option>Celeb</option></select>
+            <select id="ml-filter-gender" class="filter-sel"><option value="">All genders</option><option>Female</option><option>Male</option><option>Non-binary</option></select>
+            <button class="btn-pri" id="btn-add-influencer">+ Add Creator</button>
+          </div>
+        </div>
+        <div id="ml-summary" class="summary-bar"></div>
+        <div class="table-wrap">
+          <table class="tbl" id="ml-table">
+            <thead>
+              <tr>
+                <th>Paid Plan</th>
+                <th>Name</th>
+                <th>IG Handle</th>
+                <th>TT Handle</th>
+                <th>IG Followers</th>
+                <th>TT Followers</th>
+                <th>Tier</th>
+                <th>Vertical</th>
+                <th>Location</th>
+                <th>Gender</th>
+                <th>Email</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ml-body"><tr><td colspan="12" class="empty-cell">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 2. Outreach -->
+      <div id="tab-outreach" class="tab-panel">
+        <div class="panel-header">
+          <h2>Outreach</h2>
+          <div class="panel-actions">
+            <input type="search" class="search-box" id="or-search" placeholder="Search name, handle…">
+            <select id="or-filter-status" class="filter-sel">
+              <option value="">All statuses</option>
+              <option>Contacted</option><option>No Response</option>
+              <option>Interested</option><option>Declined</option><option>Not Yet</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="tbl" id="or-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>IG Handle</th>
+                <th>Followers</th>
+                <th>List</th>
+                <th>Outreach Status</th>
+                <th>Owner</th>
+                <th>Outreach Date</th>
+                <th>Last Contact</th>
+                <th>Notes</th>
+                <th>In Paid Plan</th>
+              </tr>
+            </thead>
+            <tbody id="or-body"><tr><td colspan="10" class="empty-cell">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 3. Paid Plan -->
+      <div id="tab-paid-plan" class="tab-panel">
+        <div class="panel-header">
+          <h2>Paid Plan</h2>
+          <div class="panel-actions">
+            <input type="search" class="search-box" id="pp-search" placeholder="Search name…">
+            <select id="pp-filter-status" class="filter-sel">
+              <option value="">All statuses</option>
+              <option>In Negotiations</option><option>Offer Out</option><option>Locked</option>
+            </select>
+            <button class="btn-pri" id="btn-add-pp">+ Add Deliverable</button>
+          </div>
+        </div>
+        <!-- CPM Calculator strip -->
+        <div class="calc-strip">
+          <span class="calc-label">Quick CPM Calculator</span>
+          <div class="calc-fields">
+            <div class="calc-fld"><label>Impressions</label><input type="number" id="calc-imp" placeholder="0"></div>
+            <div class="calc-fld"><label>CPM ($)</label><input type="number" id="calc-cpm" placeholder="0" step="0.01"></div>
+            <div class="calc-result" id="calc-result">= $0</div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="tbl" id="pp-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Name</th>
+                <th>Campaign</th>
+                <th>Platform/Format</th>
+                <th>Usage</th>
+                <th>IG Impressions</th>
+                <th>TT Impressions</th>
+                <th>IG Reel CPM</th>
+                <th>IG Story CPM</th>
+                <th>TT CPM</th>
+                <th>Est. Cost</th>
+                <th>Accepted Offer</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="pp-body"><tr><td colspan="13" class="empty-cell">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 4. Content Calendar -->
+      <div id="tab-content-cal" class="tab-panel">
+        <div class="panel-header">
+          <h2>Content Calendar</h2>
+          <div class="panel-actions">
+            <button class="view-btn active" data-view="cal">📅 Calendar</button>
+            <button class="view-btn" data-view="list">☰ List</button>
+            <button class="btn-pri" id="btn-add-cal">+ Add Entry</button>
+          </div>
+        </div>
+        <div id="cal-view">
+          <div class="cal-nav-row">
+            <button class="cal-btn" id="cal-prev">← Prev</button>
+            <span class="cal-month-label" id="cal-title"></span>
+            <button class="cal-btn" id="cal-next">Next →</button>
+          </div>
+          <div class="cal-dow-row">
+            <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div>
+            <div>Thu</div><div>Fri</div><div>Sat</div>
+          </div>
+          <div class="cal-grid" id="cal-days"></div>
+        </div>
+        <div id="list-view" class="hidden">
+          <div class="table-wrap">
+            <table class="tbl" id="cal-table">
+              <thead><tr><th>Date</th><th>Creator</th><th>Deliverable</th><th>Usage</th><th>Collab</th><th>Notes</th><th></th></tr></thead>
+              <tbody id="cal-body"><tr><td colspan="7" class="empty-cell">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Content Review -->
+      <div id="tab-content-review" class="tab-panel">
+        <div class="panel-header">
+          <h2>Content Review</h2>
+          <div class="panel-actions">
+            <select id="cr-filter-status" class="filter-sel">
+              <option value="">All</option>
+              <option value="false">Pending Approval</option>
+              <option value="true">Approved</option>
+            </select>
+            <button class="btn-pri" id="btn-add-cr">+ Add</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="tbl" id="cr-table">
+            <thead>
+              <tr>
+                <th>Creator</th>
+                <th>Campaign</th>
+                <th>Deliverable</th>
+                <th>Due</th>
+                <th>Live Date</th>
+                <th>Content V1</th>
+                <th>A8 Feedback V1</th>
+                <th>Client Feedback V1</th>
+                <th>Content V2</th>
+                <th>Approved</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="cr-body"><tr><td colspan="11" class="empty-cell">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 6. Live Posts -->
+      <div id="tab-live-posts" class="tab-panel">
+        <div class="panel-header">
+          <h2>Live Posts</h2>
+          <div class="panel-actions">
+            <button class="btn-pri" id="btn-add-lp">+ Add Post</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="tbl" id="lp-table">
+            <thead>
+              <tr>
+                <th>Live Date</th>
+                <th>Creator</th>
+                <th>Campaign</th>
+                <th>Final Rate</th>
+                <th>Total Cost</th>
+                <th>Live Link</th>
+                <th>Views</th>
+                <th>Engagement</th>
+                <th>CPV</th>
+                <th>CPE</th>
+                <th>Spark Code (IG)</th>
+                <th>Boosted</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="lp-body"><tr><td colspan="13" class="empty-cell">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 7. Payment Status -->
+      <div id="tab-payments" class="tab-panel">
+        <div class="panel-header">
+          <h2>Payment Status</h2>
+          <div class="panel-actions">
+            <select id="pay-filter" class="filter-sel">
+              <option value="">All</option>
+              <option value="pending">Pending</option>
+              <option value="paid">Paid</option>
+            </select>
+            <button class="btn-pri" id="btn-add-pay">+ Add</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="tbl" id="pay-table">
+            <thead>
+              <tr>
+                <th>Creator</th>
+                <th>Email</th>
+                <th>Agreed Rate</th>
+                <th>Deliverables</th>
+                <th>Content Live</th>
+                <th>Payment Due</th>
+                <th>W9</th>
+                <th>Invoice</th>
+                <th>QuickBooks</th>
+                <th>Paid</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="pay-body"><tr><td colspan="12" class="empty-cell">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Budget Tracker -->
+      <div id="tab-budget" class="tab-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Budget Tracker</h2>
+            <div id="budget-summary" class="budget-inline-summary"></div>
+          </div>
+          <div class="panel-actions">
+            <button class="btn-pri" id="btn-add-budget">+ Add Entry</button>
+          </div>
+        </div>
+        <div class="budget-cards" id="budget-cards"></div>
+        <div class="table-wrap" style="margin-top:16px">
+          <table class="tbl" id="budget-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Campaign</th>
+                <th>Creator / Description</th>
+                <th>Amount</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="budget-body"><tr><td colspan="7" class="empty-cell">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Reporting -->
+      <div id="tab-reporting" class="tab-panel">
+        <div class="panel-header">
+          <h2>Reporting</h2>
+          <div class="panel-actions">
+            <label style="font-size:12px;color:var(--dim)">From</label>
+            <input type="date" id="rep-start" class="filter-sel" style="width:140px">
+            <label style="font-size:12px;color:var(--dim)">To</label>
+            <input type="date" id="rep-end" class="filter-sel" style="width:140px">
+            <button class="btn-pri" id="btn-rep-load">Refresh</button>
+          </div>
+        </div>
+        <div class="kpi-grid" id="kpi-grid"></div>
+      </div>
+
+    </div><!-- /tab-content -->
+  </div><!-- /app -->
+
+  <!-- Modals rendered by JS -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal" id="modal-box">
+      <div class="modal-hdr">
+        <h3 id="modal-title">Add</h3>
+        <button class="modal-x" id="modal-close">✕</button>
+      </div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
