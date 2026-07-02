@@ -157,15 +157,49 @@ async def delete_influencer(id: int, password: str = ""):
 # ── Paid Plan ─────────────────────────────────────────────────────────────────
 @app.get("/api/paid_plan")
 async def get_paid_plan():
-    rows = await sb_get("paid_plan",
-        f"?client=eq.{config.CLIENT}&order=created_at.asc")
-    # Attach influencer names
+    # Return ALL in_paid_plan creators, merging with any existing plan record
     influencers = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,name,ig_handle,ig_followers,tt_followers")
-    inf_map = {i["id"]: i for i in influencers}
-    for r in rows:
-        r["influencer"] = inf_map.get(r["influencer_id"], {})
-    return rows
+        f"?client=eq.{config.CLIENT}&in_paid_plan=eq.true&order=name.asc")
+    plans = await sb_get("paid_plan",
+        f"?client=eq.{config.CLIENT}&order=created_at.asc")
+    # Map influencer_id -> first plan record (one plan per creator)
+    plan_map = {}
+    for p in plans:
+        if p["influencer_id"] not in plan_map:
+            plan_map[p["influencer_id"]] = p
+    result = []
+    for inf in influencers:
+        p = plan_map.get(inf["id"], {})
+        result.append({
+            "id": p.get("id"),
+            "influencer_id": inf["id"],
+            "influencer": {
+                "id": inf["id"], "name": inf["name"],
+                "ig_handle": inf["ig_handle"],
+                "ig_followers": inf["ig_followers"],
+                "tt_followers": inf["tt_followers"],
+            },
+            "status": p.get("status"),
+            "campaign": p.get("campaign"),
+            "platform_format": p.get("platform_format"),
+            "usage": p.get("usage"),
+            "exclusivity": p.get("exclusivity"),
+            "ig_reels_impressions": p.get("ig_reels_impressions"),
+            "ig_stories_impressions": p.get("ig_stories_impressions"),
+            "tt_impressions": p.get("tt_impressions"),
+            "ig_reel_cpm": p.get("ig_reel_cpm"),
+            "ig_story_cpm": p.get("ig_story_cpm"),
+            "ig_feed_cpm": p.get("ig_feed_cpm"),
+            "tt_cpm": p.get("tt_cpm"),
+            "organic_pct": p.get("organic_pct"),
+            "paid_pct": p.get("paid_pct"),
+            "first_offer": p.get("first_offer"),
+            "influencer_offer": p.get("influencer_offer"),
+            "a8_counter": p.get("a8_counter"),
+            "accepted_offer": p.get("accepted_offer"),
+            "notes": p.get("notes"),
+        })
+    return result
 
 @app.post("/api/paid_plan")
 async def add_paid_plan(req: dict):
@@ -189,7 +223,8 @@ async def delete_paid_plan(id: int, password: str = ""):
 async def get_outreach():
     return await sb_get("paid_influencers",
         f"?client=eq.{config.CLIENT}&order=name.asc"
-        f"&select=id,name,ig_handle,tt_handle,ig_followers,list_type,"
+        f"&select=id,name,ig_handle,ig_url,tt_handle,tt_url,ig_followers,tt_followers,"
+        f"list_type,tier,vertical,archetype,location,gender,email,"
         f"outreach_status,outreach_owner,outreach_date,last_contact,outreach_notes,in_paid_plan")
 
 # ── Content Calendar ─────────────────────────────────────────────────────────

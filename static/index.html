@@ -57,7 +57,7 @@
           </div>
           <div class="panel-actions">
             <input type="search" class="search-box" id="ml-search" placeholder="Search name, handle, vertical…">
-            <select id="ml-filter-tier" class="filter-sel"><option value="">All tiers</option><option>Nano</option><option>Micro</option><option>Macro</option><option>Celeb</option></select>
+            <select id="ml-filter-tier" class="filter-sel"><option value="">All tiers</option><option>Nano</option><option>Micro</option><option>Mid</option><option>Macro</option><option>Mega</option></select>
             <select id="ml-filter-gender" class="filter-sel"><option value="">All genders</option><option>Female</option><option>Male</option><option>Non-binary</option></select>
             <button class="btn-pri" id="btn-add-influencer">+ Add Creator</button>
           </div>
@@ -94,8 +94,10 @@
             <input type="search" class="search-box" id="or-search" placeholder="Search name, handle…">
             <select id="or-filter-status" class="filter-sel">
               <option value="">All statuses</option>
-              <option>Contacted</option><option>No Response</option>
-              <option>Interested</option><option>Declined</option><option>Not Yet</option>
+              <option>Not Outreached</option><option>Outreached</option>
+              <option>Followed Up 1x</option><option>Followed Up 2x</option>
+              <option>Interested</option><option>Passed</option>
+              <option>Not Responsive</option><option>Conflicted Out</option>
             </select>
           </div>
         </div>
@@ -103,19 +105,24 @@
           <table class="tbl" id="or-table">
             <thead>
               <tr>
+                <th>Owner</th>
                 <th>Name</th>
                 <th>IG Handle</th>
-                <th>Followers</th>
+                <th>TT Handle</th>
+                <th>Email</th>
+                <th>Tier</th>
+                <th>Vertical/Archetype</th>
+                <th>Location</th>
+                <th>Gender</th>
                 <th>List</th>
                 <th>Outreach Status</th>
-                <th>Owner</th>
                 <th>Outreach Date</th>
                 <th>Last Contact</th>
                 <th>Notes</th>
                 <th>In Paid Plan</th>
               </tr>
             </thead>
-            <tbody id="or-body"><tr><td colspan="10" class="empty-cell">Loading…</td></tr></tbody>
+            <tbody id="or-body"><tr><td colspan="15" class="empty-cell">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -130,16 +137,6 @@
               <option value="">All statuses</option>
               <option>In Negotiations</option><option>Offer Out</option><option>Locked</option>
             </select>
-            <button class="btn-pri" id="btn-add-pp">+ Add Deliverable</button>
-          </div>
-        </div>
-        <!-- CPM Calculator strip -->
-        <div class="calc-strip">
-          <span class="calc-label">Quick CPM Calculator</span>
-          <div class="calc-fields">
-            <div class="calc-fld"><label>Impressions</label><input type="number" id="calc-imp" placeholder="0"></div>
-            <div class="calc-fld"><label>CPM ($)</label><input type="number" id="calc-cpm" placeholder="0" step="0.01"></div>
-            <div class="calc-result" id="calc-result">= $0</div>
           </div>
         </div>
         <div class="table-wrap">
@@ -148,20 +145,23 @@
               <tr>
                 <th>Status</th>
                 <th>Name</th>
-                <th>Campaign</th>
                 <th>Platform/Format</th>
                 <th>Usage</th>
-                <th>IG Impressions</th>
-                <th>TT Impressions</th>
+                <th>Exclusivity</th>
+                <th>IG Reels Avg</th>
+                <th>IG Stories Avg</th>
+                <th>TT Avg</th>
                 <th>IG Reel CPM</th>
                 <th>IG Story CPM</th>
+                <th>IG Feed CPM</th>
                 <th>TT CPM</th>
                 <th>Est. Cost</th>
+                <th>First Offer</th>
                 <th>Accepted Offer</th>
                 <th></th>
               </tr>
             </thead>
-            <tbody id="pp-body"><tr><td colspan="13" class="empty-cell">Loading…</td></tr></tbody>
+            <tbody id="pp-body"><tr><td colspan="16" class="empty-cell">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>

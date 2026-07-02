@@ -105,11 +105,12 @@ async function loadMasterList() {
     <td>${fmt(r.tt_followers)}</td>
     <td>${r.tier ? `<span class="badge badge-int">${esc(r.tier)}</span>` : "—"}</td>
     <td>${esc(r.vertical || "")}</td>
-    <td>${esc(r.location || "")} ${r.is_international ? '<span class="badge badge-intl">Intl</span>' : ""}</td>
+    <td>${esc(r.location || "")}</td>
     <td>${esc(r.gender || "")}</td>
     <td>${esc(r.email || "")}</td>
     <td>
       <button class="btn-icon btn-edit-inf" data-id="${r.id}" title="Edit">✏</button>
+      ${currentListType==="INT" ? `<button class="btn-icon btn-copy-ext" data-id="${r.id}" title="Add to External list" style="font-size:10px;letter-spacing:.3px">→EXT</button>` : ""}
       <button class="btn-icon btn-del-inf" data-id="${r.id}" title="Delete">✕</button>
     </td>
   </tr>`).join("") : `<tr><td colspan="12" class="empty-cell">No creators yet. Click + Add Creator.</td></tr>`;
@@ -134,6 +135,32 @@ async function loadMasterList() {
       loadMasterList();
     })
   );
+  document.querySelectorAll(".btn-copy-ext").forEach(b =>
+    b.addEventListener("click", async () => {
+      const row = rows.find(r => String(r.id) === b.dataset.id);
+      if (!row) return;
+      if (!confirm(`Add ${row.name || row.ig_handle} to the External list?`)) return;
+      await apiPost("/api/influencers", {
+        list_type:    "EXT",
+        name:         row.name,
+        ig_handle:    row.ig_handle,
+        ig_url:       row.ig_url,
+        tt_handle:    row.tt_handle,
+        tt_url:       row.tt_url,
+        ig_followers: row.ig_followers,
+        tt_followers: row.tt_followers,
+        tier:         row.tier,
+        gender:       row.gender,
+        vertical:     row.vertical,
+        archetype:    row.archetype,
+        location:     row.location,
+        email:        row.email,
+        audience_age: row.audience_age,
+        shopmy_data:  row.shopmy_data,
+      });
+      alert(`${row.name || row.ig_handle} added to External list.`);
+    })
+  );
 }
 
 // List toggle
@@ -152,6 +179,16 @@ document.querySelectorAll(".list-btn").forEach(btn => {
 
 $("btn-add-influencer").addEventListener("click", () => openInfluencerModal(null));
 
+function calcTier(igFol, ttFol) {
+  const total = (parseFloat(igFol) || 0) + (parseFloat(ttFol) || 0);
+  if (!total) return "";
+  if (total < 25000)   return "Nano";
+  if (total < 100000)  return "Micro";
+  if (total < 250000)  return "Mid";
+  if (total < 1000000) return "Macro";
+  return "Mega";
+}
+
 function openInfluencerModal(existing) {
   const isEdit = !!existing;
   const e = existing || {};
@@ -168,22 +205,35 @@ function openInfluencerModal(existing) {
     <div class="form-section">Social</div>
     <div class="form-grid-2">
       <div class="fld"><label>IG Handle</label><input id="mf-ig-handle" value="${esc(e.ig_handle||"")}" placeholder="@handle"></div>
-      <div class="fld"><label>IG URL</label><input id="mf-ig-url" value="${esc(e.ig_url||"")}"></div>
       <div class="fld"><label>TikTok Handle</label><input id="mf-tt-handle" value="${esc(e.tt_handle||"")}" placeholder="@handle"></div>
-      <div class="fld"><label>TikTok URL</label><input id="mf-tt-url" value="${esc(e.tt_url||"")}"></div>
       <div class="fld"><label>IG Followers</label><input type="number" id="mf-ig-fol" value="${e.ig_followers||""}"></div>
       <div class="fld"><label>TT Followers</label><input type="number" id="mf-tt-fol" value="${e.tt_followers||""}"></div>
     </div>
     <div class="form-section">Profile</div>
     <div class="form-grid-3">
-      <div class="fld"><label>Tier</label>
-        <select id="mf-tier"><option value="">—</option><option ${e.tier==="Nano"?"selected":""}>Nano</option><option ${e.tier==="Micro"?"selected":""}>Micro</option><option ${e.tier==="Macro"?"selected":""}>Macro</option><option ${e.tier==="Celeb"?"selected":""}>Celeb</option></select>
+      <div class="fld"><label>Tier (auto-fills)</label>
+        <select id="mf-tier"><option value="">—</option><option ${e.tier==="Nano"?"selected":""}>Nano</option><option ${e.tier==="Micro"?"selected":""}>Micro</option><option ${e.tier==="Mid"?"selected":""}>Mid</option><option ${e.tier==="Macro"?"selected":""}>Macro</option><option ${e.tier==="Mega"?"selected":""}>Mega</option></select>
       </div>
       <div class="fld"><label>Gender</label>
         <select id="mf-gender"><option value="">—</option><option ${e.gender==="Female"?"selected":""}>Female</option><option ${e.gender==="Male"?"selected":""}>Male</option><option ${e.gender==="Non-binary"?"selected":""}>Non-binary</option></select>
       </div>
-      <div class="fld"><label>Vertical</label><input id="mf-vertical" value="${esc(e.vertical||"")}"></div>
-      <div class="fld"><label>Archetype</label><input id="mf-archetype" value="${esc(e.archetype||"")}"></div>
+      <div class="fld"><label>Vertical / Archetype</label>
+        <select id="mf-vertical">
+          <option value="">—</option>
+          <option ${ (e.vertical||e.archetype)==="Health / Wellness"?"selected":""}>Health / Wellness</option>
+          <option ${ (e.vertical||e.archetype)==="Beauty / Skincare"?"selected":""}>Beauty / Skincare</option>
+          <option ${ (e.vertical||e.archetype)==="Fashion / Lifestyle"?"selected":""}>Fashion / Lifestyle</option>
+          <option ${ (e.vertical||e.archetype)==="Cool Guys"?"selected":""}>Cool Guys</option>
+          <option ${ (e.vertical||e.archetype)==="Models"?"selected":""}>Models</option>
+          <option ${ (e.vertical||e.archetype)==="Moms/dads"?"selected":""}>Moms/dads</option>
+          <option ${ (e.vertical||e.archetype)==="College"?"selected":""}>College</option>
+          <option ${ (e.vertical||e.archetype)==="Travel"?"selected":""}>Travel</option>
+          <option ${ (e.vertical||e.archetype)==="Creatives"?"selected":""}>Creatives</option>
+          <option ${ (e.vertical||e.archetype)==="Food / Bev"?"selected":""}>Food / Bev</option>
+          <option ${ (e.vertical||e.archetype)==="Professionals"?"selected":""}>Professionals</option>
+          <option ${ (e.vertical||e.archetype)==="Fitness"?"selected":""}>Fitness</option>
+        </select>
+      </div>
       <div class="fld"><label>Location</label><input id="mf-location" value="${esc(e.location||"")}"></div>
       <div class="fld"><label>Email</label><input type="email" id="mf-email" value="${esc(e.email||"")}"></div>
     </div>
@@ -191,33 +241,45 @@ function openInfluencerModal(existing) {
     <div class="fld"><label>ShopMy Conversion Data</label><input id="mf-shopmy" value="${esc(e.shopmy_data||"")}"></div>
     ${currentListType==="EXT" ? `<div class="fld"><label>External Feedback</label><textarea id="mf-ext-feedback" rows="2">${esc(e.external_feedback||"")}</textarea></div>` : ""}
   `, async () => {
+    const igHandle = $("mf-ig-handle").value.trim().replace(/^@/,"");
+    const ttHandle = $("mf-tt-handle").value.trim().replace(/^@/,"");
     const payload = {
-      list_type:   $("mf-list-type").value,
-      name:        $("mf-name").value.trim(),
-      ig_handle:   $("mf-ig-handle").value.trim().replace(/^@/,""),
-      ig_url:      $("mf-ig-url").value.trim(),
-      tt_handle:   $("mf-tt-handle").value.trim().replace(/^@/,""),
-      tt_url:      $("mf-tt-url").value.trim(),
-      ig_followers: parseFloat($("mf-ig-fol").value) || null,
-      tt_followers: parseFloat($("mf-tt-fol").value) || null,
-      tier:         $("mf-tier").value,
-      gender:       $("mf-gender").value,
-      vertical:     $("mf-vertical").value.trim(),
-      archetype:    $("mf-archetype").value.trim(),
-      location:     $("mf-location").value.trim(),
-      email:        $("mf-email").value.trim(),
-      audience_age: $("mf-age").value.trim(),
-      shopmy_data:  $("mf-shopmy").value.trim(),
+      list_type:    $("mf-list-type").value,
+      name:         $("mf-name").value.trim(),
+      ig_handle:    igHandle,
+      ig_url:       igHandle ? `https://instagram.com/${igHandle}` : "",
+      tt_handle:    ttHandle,
+      tt_url:       ttHandle ? `https://tiktok.com/@${ttHandle}` : "",
+      ig_followers:  parseFloat($("mf-ig-fol").value) || null,
+      tt_followers:  parseFloat($("mf-tt-fol").value) || null,
+      tier:          $("mf-tier").value,
+      gender:        $("mf-gender").value,
+      vertical:      $("mf-vertical").value,
+      archetype:     $("mf-vertical").value,
+      location:      $("mf-location").value.trim(),
+      email:         $("mf-email").value.trim(),
+      audience_age:  $("mf-age").value.trim(),
+      shopmy_data:   $("mf-shopmy").value.trim(),
       external_feedback: $("mf-ext-feedback")?.value.trim() || null,
     };
     if (isEdit) await apiPatch(`/api/influencers/${existing.id}`, payload);
     else await apiPost("/api/influencers", payload);
     closeModal(); loadMasterList();
   });
+
+  // Wire up tier autofill after modal renders
+  setTimeout(() => {
+    const updateTier = () => {
+      const t = calcTier($("mf-ig-fol")?.value, $("mf-tt-fol")?.value);
+      if (t) $("mf-tier").value = t;
+    };
+    $("mf-ig-fol")?.addEventListener("input", updateTier);
+    $("mf-tt-fol")?.addEventListener("input", updateTier);
+  }, 0);
 }
 
 // ── 2. Outreach ───────────────────────────────────────────────────────────────
-const OUTREACH_STATUSES = ["Not Yet","Contacted","No Response","Interested","Declined"];
+const OUTREACH_STATUSES = ["Not Outreached","Outreached","Followed Up 1x","Followed Up 2x","Interested","Passed","Not Responsive","Conflicted Out"];
 
 async function loadOutreach() {
   const data = await apiGet("/api/outreach");
@@ -227,28 +289,35 @@ async function loadOutreach() {
   if (search) rows = rows.filter(r => `${r.name} ${r.ig_handle}`.toLowerCase().includes(search));
   if (status) rows = rows.filter(r => r.outreach_status === status);
 
+  const iStyle = "background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-size:12px";
   $("or-body").innerHTML = rows.length ? rows.map(r => `<tr>
+    <td><input class="or-owner" data-id="${r.id}" value="${esc(r.outreach_owner||"")}" placeholder="Owner" style="width:90px;${iStyle}"></td>
     <td><strong>${esc(r.name||"")}</strong></td>
-    <td>${r.ig_handle ? `<a href="https://instagram.com/${esc(r.ig_handle)}" target="_blank">@${esc(r.ig_handle)}</a>` : "—"}</td>
-    <td>${fmt(r.ig_followers)}</td>
+    <td>${r.ig_handle ? `<a href="${esc(r.ig_url||`https://instagram.com/${r.ig_handle}`)}" target="_blank">@${esc(r.ig_handle)}</a>` : "—"}</td>
+    <td>${r.tt_handle ? `<a href="${esc(r.tt_url||`https://tiktok.com/@${r.tt_handle}`)}" target="_blank">@${esc(r.tt_handle)}</a>` : "—"}</td>
+    <td><input class="or-email" data-id="${r.id}" value="${esc(r.email||"")}" placeholder="Email" style="width:160px;${iStyle}"></td>
+    <td>${r.tier ? `<span class="badge badge-int">${esc(r.tier)}</span>` : "—"}</td>
+    <td>${esc(r.vertical||r.archetype||"")}</td>
+    <td>${esc(r.location||"")}</td>
+    <td>${esc(r.gender||"")}</td>
     <td><span class="badge ${r.list_type==="INT"?"badge-int":"badge-ext"}">${esc(r.list_type)}</span></td>
     <td>
-      <select class="or-status-sel" data-id="${r.id}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-size:12px">
+      <select class="or-status-sel" data-id="${r.id}" style="${iStyle}">
         ${OUTREACH_STATUSES.map(s=>`<option ${r.outreach_status===s?"selected":""}>${s}</option>`).join("")}
       </select>
     </td>
-    <td><input class="or-owner" data-id="${r.id}" value="${esc(r.outreach_owner||"")}" placeholder="Owner" style="width:100px;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-size:12px"></td>
-    <td><input type="date" class="or-date" data-id="${r.id}" value="${r.outreach_date||""}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-size:12px"></td>
-    <td><input type="date" class="or-last" data-id="${r.id}" value="${r.last_contact||""}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-size:12px"></td>
-    <td><input class="or-notes" data-id="${r.id}" value="${esc(r.outreach_notes||"")}" placeholder="Notes" style="width:160px;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-size:12px"></td>
+    <td><input type="date" class="or-date" data-id="${r.id}" value="${r.outreach_date||""}" style="${iStyle}"></td>
+    <td><input type="date" class="or-last" data-id="${r.id}" value="${r.last_contact||""}" style="${iStyle}"></td>
+    <td><input class="or-notes" data-id="${r.id}" value="${esc(r.outreach_notes||"")}" placeholder="Notes" style="width:140px;${iStyle}"></td>
     <td>${r.in_paid_plan ? '<span class="badge badge-locked">✓</span>' : ""}</td>
-  </tr>`).join("") : `<tr><td colspan="10" class="empty-cell">No creators found.</td></tr>`;
+  </tr>`).join("") : `<tr><td colspan="15" class="empty-cell">No creators found.</td></tr>`;
 
   const saveField = async (id, field, value) => {
     await apiPatch(`/api/influencers/${id}`, {[field]: value || null});
   };
   document.querySelectorAll(".or-status-sel").forEach(s => s.addEventListener("change", () => saveField(s.dataset.id, "outreach_status", s.value)));
   document.querySelectorAll(".or-owner").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "outreach_owner", i.value.trim())));
+  document.querySelectorAll(".or-email").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "email", i.value.trim())));
   document.querySelectorAll(".or-date").forEach(i => i.addEventListener("change", () => saveField(i.dataset.id, "outreach_date", i.value)));
   document.querySelectorAll(".or-last").forEach(i => i.addEventListener("change", () => saveField(i.dataset.id, "last_contact", i.value)));
   document.querySelectorAll(".or-notes").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "outreach_notes", i.value.trim())));
@@ -257,24 +326,16 @@ async function loadOutreach() {
 ["or-search","or-filter-status"].forEach(id => document.getElementById(id)?.addEventListener("input", loadOutreach));
 
 // ── 3. Paid Plan ──────────────────────────────────────────────────────────────
-// Quick CPM calculator
-["calc-imp","calc-cpm"].forEach(id => {
-  document.getElementById(id)?.addEventListener("input", () => {
-    const imp = parseFloat($("calc-imp")?.value) || 0;
-    const cpm = parseFloat($("calc-cpm")?.value) || 0;
-    $("calc-result").textContent = "= $" + Math.round((imp * cpm) / 1000).toLocaleString();
-  });
-});
 
 function calcEstCost(r) {
-  const igReel  = ((r.ig_reels_impressions||0) * (r.ig_reel_cpm||0)) / 1000;
+  const igReel  = ((r.ig_reels_impressions||0)  * (r.ig_reel_cpm||0))  / 1000;
   const igStory = ((r.ig_stories_impressions||0) * (r.ig_story_cpm||0)) / 1000;
-  const igFeed  = ((r.ig_reels_impressions||0) * (r.ig_feed_cpm||0)) / 1000;
-  const tt      = ((r.tt_impressions||0) * (r.tt_cpm||0)) / 1000;
-  const sub     = igReel + igStory + igFeed + tt;
-  const org     = sub * (r.organic_pct||0) / 100;
-  const paid    = sub * (r.paid_pct||0) / 100;
-  return sub + org + paid;
+  const igFeed  = ((r.ig_reels_impressions||0)  * (r.ig_feed_cpm||0))  / 1000;
+  const tt      = ((r.tt_impressions||0)         * (r.tt_cpm||0))       / 1000;
+  const base    = igReel + igStory + igFeed + tt;
+  const org     = base * (r.organic_pct||0) / 100;
+  const paid    = base * (r.paid_pct||0) / 100;
+  return base + org + paid;
 }
 
 const STATUS_BADGE = {
@@ -284,7 +345,6 @@ const STATUS_BADGE = {
 };
 
 async function loadPaidPlan() {
-  await getInfluencers();
   const data = await apiGet("/api/paid_plan");
   const search = $("pp-search")?.value.toLowerCase() || "";
   const status = $("pp-filter-status")?.value || "";
@@ -292,56 +352,43 @@ async function loadPaidPlan() {
   if (search) rows = rows.filter(r => (r.influencer?.name||"").toLowerCase().includes(search));
   if (status) rows = rows.filter(r => r.status === status);
 
-  $("pp-body").innerHTML = rows.length ? rows.map(r => {
+  $("pp-body").innerHTML = rows.length ? rows.map((r, i) => {
     const est = calcEstCost(r);
     return `<tr>
-      <td>${r.status ? `<span class="badge ${STATUS_BADGE[r.status]||""}">${esc(r.status)}</span>` : "—"}</td>
+      <td>${r.status ? `<span class="badge ${STATUS_BADGE[r.status]||""}">${esc(r.status)}</span>` : "<span style='color:var(--dim);font-size:11px'>Not set</span>"}</td>
       <td><strong>${esc(r.influencer?.name||"Unknown")}</strong></td>
-      <td>${esc(r.campaign||"")}</td>
       <td>${esc(r.platform_format||"")}</td>
       <td>${esc(r.usage||"")}</td>
+      <td>${esc(r.exclusivity||"")}</td>
       <td>${fmt(r.ig_reels_impressions)}</td>
+      <td>${fmt(r.ig_stories_impressions)}</td>
       <td>${fmt(r.tt_impressions)}</td>
       <td>${fmtD(r.ig_reel_cpm)}</td>
       <td>${fmtD(r.ig_story_cpm)}</td>
+      <td>${fmtD(r.ig_feed_cpm)}</td>
       <td>${fmtD(r.tt_cpm)}</td>
-      <td style="color:var(--red);font-weight:600">${fmtD(est)}</td>
+      <td style="color:var(--red);font-weight:600">${est ? fmtD(est) : "—"}</td>
+      <td>${fmtD(r.first_offer)}</td>
       <td style="font-weight:600">${fmtD(r.accepted_offer)}</td>
-      <td>
-        <button class="btn-icon btn-edit-pp" data-id="${r.id}" title="Edit">✏</button>
-        <button class="btn-icon btn-del-pp" data-id="${r.id}" title="Delete">✕</button>
-      </td>
+      <td><button class="btn-icon btn-edit-pp" data-idx="${i}" title="Edit details">✏</button></td>
     </tr>`;
-  }).join("") : `<tr><td colspan="13" class="empty-cell">No paid plan entries yet. Add creators to the master list and check their "Paid Plan" box, then + Add Deliverable.</td></tr>`;
+  }).join("") : `<tr><td colspan="16" class="empty-cell">No creators in Paid Plan yet. Check the "Paid Plan" box on a creator in the Master Lists tab.</td></tr>`;
 
   document.querySelectorAll(".btn-edit-pp").forEach(b =>
     b.addEventListener("click", () => {
-      const row = rows.find(r => String(r.id) === b.dataset.id);
+      const row = rows[parseInt(b.dataset.idx)];
       if (row) openPaidPlanModal(row);
-    })
-  );
-  document.querySelectorAll(".btn-del-pp").forEach(b =>
-    b.addEventListener("click", async () => {
-      if (!confirm("Delete this deliverable?")) return;
-      await apiDelete(`/api/paid_plan/${b.dataset.id}?password=${encodeURIComponent(PW)}`);
-      loadPaidPlan();
     })
   );
 }
 
 ["pp-search","pp-filter-status"].forEach(id => document.getElementById(id)?.addEventListener("input", loadPaidPlan));
-$("btn-add-pp").addEventListener("click", () => openPaidPlanModal(null));
 
-async function openPaidPlanModal(existing) {
-  await getInfluencers();
-  const inPaidPlan = allInfluencers.filter(i => i.in_paid_plan);
-  const isEdit = !!existing;
-  const e = existing || {};
-  openModal(isEdit ? "Edit Deliverable" : "Add Deliverable", `
+async function openPaidPlanModal(row) {
+  const e = row;
+  const planId = e.id; // null = no DB record yet → will POST; set = will PATCH
+  openModal(`Plan Details — ${esc(e.influencer?.name||"")}`, `
     <div class="form-grid-2">
-      <div class="fld"><label>Creator</label>
-        <select id="ppf-inf">${inPaidPlan.map(i=>`<option value="${i.id}" ${e.influencer_id===i.id?"selected":""}>${esc(i.name||i.ig_handle)}</option>`).join("")}</select>
-      </div>
       <div class="fld"><label>Status</label>
         <select id="ppf-status">
           <option value="">—</option>
@@ -358,10 +405,17 @@ async function openPaidPlanModal(existing) {
           <option ${e.platform_format==="IG Story"?"selected":""}>IG Story</option>
           <option ${e.platform_format==="IG In-Feed"?"selected":""}>IG In-Feed</option>
           <option ${e.platform_format==="TikTok"?"selected":""}>TikTok</option>
+          <option ${e.platform_format==="IG Reel + TikTok"?"selected":""}>IG Reel + TikTok</option>
         </select>
       </div>
       <div class="fld"><label>Usage</label>
-        <select id="ppf-usage"><option>Organic</option><option ${e.usage==="Paid"?"selected":""}>Paid</option><option ${e.usage==="Both"?"selected":""}>Both</option></select>
+        <select id="ppf-usage">
+          <option value="">—</option>
+          <option ${e.usage==="Organic (30 days)"?"selected":""}>Organic (30 days)</option>
+          <option ${e.usage==="Baked in Paid (30 days)"?"selected":""}>Baked in Paid (30 days)</option>
+          <option ${e.usage==="Pre-Negotiated Paid (30 days)"?"selected":""}>Pre-Negotiated Paid (30 days)</option>
+          <option ${e.usage==="Other"?"selected":""}>Other</option>
+        </select>
       </div>
       <div class="fld"><label>Exclusivity</label><input id="ppf-excl" value="${esc(e.exclusivity||"")}"></div>
     </div>
@@ -371,26 +425,38 @@ async function openPaidPlanModal(existing) {
       <div class="fld"><label>IG Stories Avg Impressions</label><input type="number" id="ppf-ig-s-imp" value="${e.ig_stories_impressions||""}"></div>
       <div class="fld"><label>TikTok Avg Impressions</label><input type="number" id="ppf-tt-imp" value="${e.tt_impressions||""}"></div>
     </div>
-    <div class="form-section">CPM Rates</div>
+    <div class="form-section">CPM Rates (benchmark defaults pre-filled)</div>
     <div class="form-grid-3">
-      <div class="fld"><label>IG Reel CPM ($)</label><input type="number" step="0.01" id="ppf-reel-cpm" value="${e.ig_reel_cpm||""}"></div>
-      <div class="fld"><label>IG Story CPM ($)</label><input type="number" step="0.01" id="ppf-story-cpm" value="${e.ig_story_cpm||""}"></div>
-      <div class="fld"><label>TT CPM ($)</label><input type="number" step="0.01" id="ppf-tt-cpm" value="${e.tt_cpm||""}"></div>
+      <div class="fld"><label>IG Reel CPM ($)</label><input type="number" step="0.01" id="ppf-reel-cpm" value="${e.ig_reel_cpm ?? 29.50}"></div>
+      <div class="fld"><label>IG Story CPM ($)</label><input type="number" step="0.01" id="ppf-story-cpm" value="${e.ig_story_cpm ?? 10.50}"></div>
+      <div class="fld"><label>IG In-Feed CPM ($)</label><input type="number" step="0.01" id="ppf-feed-cpm" value="${e.ig_feed_cpm ?? 29.00}"></div>
+      <div class="fld"><label>TT CPM ($)</label><input type="number" step="0.01" id="ppf-tt-cpm" value="${e.tt_cpm ?? 20.00}"></div>
     </div>
     <div class="form-section">Usage Rights + Negotiation</div>
     <div class="form-grid-3">
-      <div class="fld"><label>Organic Usage %</label><input type="number" step="0.1" id="ppf-org-pct" value="${e.organic_pct||""}"></div>
-      <div class="fld"><label>Paid Usage %</label><input type="number" step="0.1" id="ppf-paid-pct" value="${e.paid_pct||""}"></div>
+      <div class="fld"><label>Organic Usage %</label><input type="number" step="0.1" id="ppf-org-pct" value="${e.organic_pct ?? 10}"></div>
+      <div class="fld"><label>Paid Usage %</label><input type="number" step="0.1" id="ppf-paid-pct" value="${e.paid_pct ?? 30}"></div>
       <div class="fld"><label>First Offer ($)</label><input type="number" id="ppf-first" value="${e.first_offer||""}"></div>
-      <div class="fld"><label>Influencer Offer ($)</label><input type="number" id="ppf-inf-offer" value="${e.influencer_offer||""}"></div>
+      <div class="fld"><label>Influencer Ask ($)</label><input type="number" id="ppf-inf-offer" value="${e.influencer_offer||""}"></div>
       <div class="fld"><label>A8 Counter ($)</label><input type="number" id="ppf-a8c" value="${e.a8_counter||""}"></div>
       <div class="fld"><label>Accepted Offer ($)</label><input type="number" id="ppf-accepted" value="${e.accepted_offer||""}"></div>
     </div>
     <div class="fld" style="margin-top:8px"><label>Notes</label><textarea id="ppf-notes" rows="2">${esc(e.notes||"")}</textarea></div>
+    <div class="form-section">Estimated Cost — Live Calculator</div>
+    <div id="ppf-calc-breakdown" style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;font-size:12px;line-height:2">
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--dim)">IG Reel</span><strong id="ppf-c-igr">—</strong></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--dim)">IG Story</span><strong id="ppf-c-igs">—</strong></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--dim)">IG In-Feed</span><strong id="ppf-c-igf">—</strong></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--dim)">TikTok</span><strong id="ppf-c-tt">—</strong></div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px;padding-top:6px"><span style="color:var(--dim)">Base CPM Cost</span><strong id="ppf-c-base">—</strong></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--dim)">+ Organic Usage</span><strong id="ppf-c-org">—</strong></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--dim)">+ Paid Usage</span><strong id="ppf-c-paid">—</strong></div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-size:14px"><span style="font-weight:700">Total Est. Cost</span><strong style="color:var(--red);font-size:18px" id="ppf-c-total">—</strong></div>
+    </div>
   `, async () => {
-    const n = id => parseFloat($(id)?.value) || null;
+    const n = id => { const v = $(id)?.value; return v !== "" && v != null ? parseFloat(v) || null : null; };
     const payload = {
-      influencer_id:          parseInt($("ppf-inf").value),
+      influencer_id:          e.influencer_id,
       status:                 $("ppf-status").value,
       campaign:               $("ppf-campaign").value.trim(),
       platform_format:        $("ppf-format").value,
@@ -401,6 +467,7 @@ async function openPaidPlanModal(existing) {
       tt_impressions:         n("ppf-tt-imp"),
       ig_reel_cpm:            n("ppf-reel-cpm"),
       ig_story_cpm:           n("ppf-story-cpm"),
+      ig_feed_cpm:            n("ppf-feed-cpm"),
       tt_cpm:                 n("ppf-tt-cpm"),
       organic_pct:            n("ppf-org-pct"),
       paid_pct:               n("ppf-paid-pct"),
@@ -410,10 +477,38 @@ async function openPaidPlanModal(existing) {
       accepted_offer:         n("ppf-accepted"),
       notes:                  $("ppf-notes").value.trim(),
     };
-    if (isEdit) await apiPatch(`/api/paid_plan/${existing.id}`, payload);
+    if (planId) await apiPatch(`/api/paid_plan/${planId}`, payload);
     else await apiPost("/api/paid_plan", payload);
     closeModal(); loadPaidPlan();
   });
+
+  // Live cost calculator — wires up after modal renders
+  setTimeout(() => {
+    const fD = v => v > 0 ? "$" + Math.round(v).toLocaleString() : "—";
+    const updateCalc = () => {
+      const nv = id => parseFloat($(id)?.value) || 0;
+      const igReel  = (nv("ppf-ig-r-imp")  * nv("ppf-reel-cpm"))  / 1000;
+      const igStory = (nv("ppf-ig-s-imp")  * nv("ppf-story-cpm")) / 1000;
+      const igFeed  = (nv("ppf-ig-r-imp")  * nv("ppf-feed-cpm"))  / 1000;
+      const tt      = (nv("ppf-tt-imp")    * nv("ppf-tt-cpm"))    / 1000;
+      const base    = igReel + igStory + igFeed + tt;
+      const org     = base * nv("ppf-org-pct") / 100;
+      const paid    = base * nv("ppf-paid-pct") / 100;
+      const total   = base + org + paid;
+      $("ppf-c-igr").textContent  = fD(igReel);
+      $("ppf-c-igs").textContent  = fD(igStory);
+      $("ppf-c-igf").textContent  = fD(igFeed);
+      $("ppf-c-tt").textContent   = fD(tt);
+      $("ppf-c-base").textContent = fD(base);
+      $("ppf-c-org").textContent  = fD(org);
+      $("ppf-c-paid").textContent = fD(paid);
+      $("ppf-c-total").textContent = fD(total);
+    };
+    ["ppf-ig-r-imp","ppf-ig-s-imp","ppf-tt-imp",
+     "ppf-reel-cpm","ppf-story-cpm","ppf-feed-cpm","ppf-tt-cpm",
+     "ppf-org-pct","ppf-paid-pct"].forEach(id => $(id)?.addEventListener("input", updateCalc));
+    updateCalc(); // run immediately with existing values
+  }, 0);
 }
 
 // ── 4. Content Calendar ───────────────────────────────────────────────────────
