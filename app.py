@@ -193,9 +193,13 @@ async def get_paid_plan():
             "platform_format": p.get("platform_format"),
             "usage": p.get("usage"),
             "exclusivity": p.get("exclusivity"),
+            "ig_impressions": p.get("ig_reels_impressions"),
             "ig_reels_impressions": p.get("ig_reels_impressions"),
-            "ig_stories_impressions": p.get("ig_stories_impressions"),
             "tt_impressions": p.get("tt_impressions"),
+            "ig_feed_qty":  p.get("ig_feed_qty", 0),
+            "ig_reel_qty":  p.get("ig_reel_qty", 0),
+            "ig_story_qty": p.get("ig_story_qty", 0),
+            "tt_qty":       p.get("tt_qty", 0),
             "ig_reel_cpm": p.get("ig_reel_cpm"),
             "ig_story_cpm": p.get("ig_story_cpm"),
             "ig_feed_cpm": p.get("ig_feed_cpm"),
@@ -281,6 +285,12 @@ async def add_content_review(req: dict):
 async def update_content_review(id: int, req: dict):
     check_auth(req.pop("password", None))
     return await sb_patch("content_review", id, req)
+
+@app.delete("/api/content_review/{id}")
+async def delete_content_review(id: int, password: str = ""):
+    check_auth(password)
+    await sb_delete("content_review", id)
+    return {"ok": True}
 
 # ── Live Posts ────────────────────────────────────────────────────────────────
 @app.get("/api/live_posts")

@@ -328,11 +328,12 @@ async function loadOutreach() {
 // ── 3. Paid Plan ──────────────────────────────────────────────────────────────
 
 function calcEstCost(r) {
-  const igReel  = ((r.ig_reels_impressions||0)  * (r.ig_reel_cpm||0))  / 1000;
-  const igStory = ((r.ig_stories_impressions||0) * (r.ig_story_cpm||0)) / 1000;
-  const igFeed  = ((r.ig_reels_impressions||0)  * (r.ig_feed_cpm||0))  / 1000;
-  const tt      = ((r.tt_impressions||0)         * (r.tt_cpm||0))       / 1000;
-  const base    = igReel + igStory + igFeed + tt;
+  const ig   = r.ig_impressions || r.ig_reels_impressions || 0;
+  const igFeed  = (r.ig_feed_qty||0)  * ig * (r.ig_feed_cpm||0)  / 1000;
+  const igReel  = (r.ig_reel_qty||0)  * ig * (r.ig_reel_cpm||0)  / 1000;
+  const igStory = (r.ig_story_qty||0) * ig * (r.ig_story_cpm||0) / 1000;
+  const tt      = (r.tt_qty||0) * (r.tt_impressions||0) * (r.tt_cpm||0) / 1000;
+  const base    = igFeed + igReel + igStory + tt;
   const org     = base * (r.organic_pct||0) / 100;
   const paid    = base * (r.paid_pct||0) / 100;
   return base + org + paid;
@@ -360,19 +361,19 @@ async function loadPaidPlan() {
   const del1 = v => v ? `<span style="color:var(--text);font-weight:600">1</span>` : `<span style="color:var(--dim)">—</span>`;
 
   $("pp-body").innerHTML = rows.length ? rows.map((r, i) => {
-    const inf = r.influencer || {};
-    const fmt_ = r.platform_format || "";
-    const hasIGFeed  = fmt_.includes("In-Feed");
-    const hasIGReel  = fmt_.includes("Reel");
-    const hasIGStory = fmt_.includes("Story");
-    const hasTT      = fmt_.includes("TikTok");
+    const inf  = r.influencer || {};
+    const igImp = r.ig_impressions || r.ig_reels_impressions || 0;
+    const feedQty  = r.ig_feed_qty  || 0;
+    const reelQty  = r.ig_reel_qty  || 0;
+    const storyQty = r.ig_story_qty || 0;
+    const ttQty    = r.tt_qty       || 0;
 
-    const igFeedCost  = ((r.ig_reels_impressions||0)  * (r.ig_feed_cpm||0))  / 1000;
-    const igReelCost  = ((r.ig_reels_impressions||0)  * (r.ig_reel_cpm||0))  / 1000;
-    const igStoryCost = ((r.ig_stories_impressions||0) * (r.ig_story_cpm||0)) / 1000;
-    const ttCost      = ((r.tt_impressions||0)         * (r.tt_cpm||0))       / 1000;
+    const igFeedCost  = feedQty  * igImp * (r.ig_feed_cpm||0)  / 1000;
+    const igReelCost  = reelQty  * igImp * (r.ig_reel_cpm||0)  / 1000;
+    const igStoryCost = storyQty * igImp * (r.ig_story_cpm||0) / 1000;
+    const ttCost      = ttQty * (r.tt_impressions||0) * (r.tt_cpm||0) / 1000;
     const cpmEst      = igFeedCost + igReelCost + igStoryCost + ttCost;
-    const totalImpr   = (r.ig_reels_impressions||0) + (r.ig_stories_impressions||0) + (r.tt_impressions||0);
+    const totalImpr   = (feedQty + reelQty + storyQty) * igImp + ttQty * (r.tt_impressions||0);
     const orgPct      = r.organic_pct != null ? r.organic_pct : 10;
     const paidPct     = r.paid_pct    != null ? r.paid_pct    : 30;
     const orgD        = cpmEst * orgPct  / 100;
@@ -386,10 +387,10 @@ async function loadPaidPlan() {
       <td style="color:var(--dim)">${(r.ig_reels_impressions||0).toLocaleString() || "—"}</td>
       <td>${inf.tt_handle ? `<a href="${esc(inf.tt_url||`https://tiktok.com/@${inf.tt_handle}`)}" target="_blank" style="color:var(--red)">@${esc(inf.tt_handle)}</a>` : "—"}</td>
       <td style="color:var(--dim)">${(r.tt_impressions||0).toLocaleString() || "—"}</td>
-      <td style="text-align:center">${del1(hasIGFeed)}</td>
-      <td style="text-align:center">${del1(hasIGReel)}</td>
-      <td style="text-align:center">${del1(hasIGStory)}</td>
-      <td style="text-align:center">${del1(hasTT)}</td>
+      <td style="text-align:center">${feedQty  || `<span style="color:var(--dim)">—</span>`}</td>
+      <td style="text-align:center">${reelQty  || `<span style="color:var(--dim)">—</span>`}</td>
+      <td style="text-align:center">${storyQty || `<span style="color:var(--dim)">—</span>`}</td>
+      <td style="text-align:center">${ttQty    || `<span style="color:var(--dim)">—</span>`}</td>
       <td style="color:var(--yellow)">${r.ig_feed_cpm ? `$${r.ig_feed_cpm}` : "—"}</td>
       <td style="color:var(--yellow)">${r.ig_reel_cpm ? `$${r.ig_reel_cpm}` : "—"}</td>
       <td style="color:var(--yellow)">${r.ig_story_cpm ? `$${r.ig_story_cpm}` : "—"}</td>
@@ -406,6 +407,7 @@ async function loadPaidPlan() {
       <td>${fC(paidD)}</td>
       <td style="color:var(--red);font-weight:700">${fC(totalEst)}</td>
       <td>${fmtD(r.first_offer)}</td>
+      <td style="color:var(--dim)">${totalEst ? fC(totalEst * 0.6) : "—"}</td>
       <td>${fmtD(r.influencer_offer)}</td>
       <td>${fmtD(r.a8_counter)}</td>
       <td style="font-weight:600">${fmtD(r.accepted_offer)}</td>
@@ -414,7 +416,7 @@ async function loadPaidPlan() {
         ${r.id ? `<button class="btn-icon btn-del-pp" data-id="${r.id}" title="Clear plan data" style="color:#666">✕</button>` : ""}
       </td>
     </tr>`;
-  }).join("") : `<tr><td colspan="30" class="empty-cell">No creators in Paid Plan yet. Check the "Paid Plan" box on a creator in the Master Lists tab.</td></tr>`;
+  }).join("") : `<tr><td colspan="31" class="empty-cell">No creators in Paid Plan yet. Check the "Paid Plan" box on a creator in the Master Lists tab.</td></tr>`;
 
   document.querySelectorAll(".btn-edit-pp").forEach(b =>
     b.addEventListener("click", () => {
@@ -451,24 +453,21 @@ async function openPaidPlanModal(row) {
   const e = row;
   const planId = e.id;
   const d = (v, def) => (v != null && v !== "") ? v : def; // default helper
-  openModal(`Plan Details — ${esc(e.influencer?.name||"")}`, `
-    <div class="form-grid-2">
+  const inf = e.influencer || {};
+  openModal(`Plan Details — ${esc(inf.name||"")}`, `
+    <div class="form-section">Creator Info</div>
+    <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px">
+      <span><span style="color:var(--dim)">Name </span><strong>${esc(inf.name||"")}</strong></span>
+      ${inf.ig_handle ? `<span><span style="color:var(--dim)">IG </span><a href="${esc(inf.ig_url||`https://instagram.com/${inf.ig_handle}`)}" target="_blank" style="color:var(--red)">@${esc(inf.ig_handle)}</a></span>` : ""}
+      ${inf.tt_handle ? `<span><span style="color:var(--dim)">TT </span><a href="${esc(inf.tt_url||`https://tiktok.com/@${inf.tt_handle}`)}" target="_blank" style="color:var(--red)">@${esc(inf.tt_handle)}</a></span>` : ""}
+    </div>
+    <div class="form-grid-2" style="margin-bottom:8px">
       <div class="fld"><label>Status</label>
         <select id="ppf-status">
           <option value="">—</option>
           <option ${e.status==="In Negotiations"?"selected":""}>In Negotiations</option>
           <option ${e.status==="Offer Out"?"selected":""}>Offer Out</option>
           <option ${e.status==="Locked"?"selected":""}>Locked</option>
-        </select>
-      </div>
-      <div class="fld"><label>Platform / Format</label>
-        <select id="ppf-format">
-          <option value="">—</option>
-          <option ${e.platform_format==="IG Reel"?"selected":""}>IG Reel</option>
-          <option ${e.platform_format==="IG Story"?"selected":""}>IG Story</option>
-          <option ${e.platform_format==="IG In-Feed"?"selected":""}>IG In-Feed</option>
-          <option ${e.platform_format==="TikTok"?"selected":""}>TikTok</option>
-          <option ${e.platform_format==="IG Reel + TikTok"?"selected":""}>IG Reel + TikTok</option>
         </select>
       </div>
       <div class="fld"><label>Usage</label>
@@ -480,13 +479,18 @@ async function openPaidPlanModal(row) {
           <option ${e.usage==="Other"?"selected":""}>Other</option>
         </select>
       </div>
-      <div class="fld"><label>Exclusivity</label><input id="ppf-excl" value="${esc(e.exclusivity||"")}"></div>
     </div>
     <div class="form-section">Impressions</div>
-    <div class="form-grid-3">
-      <div class="fld"><label>IG Reels Avg Impressions</label><input type="number" id="ppf-ig-r-imp" value="${e.ig_reels_impressions||""}"></div>
-      <div class="fld"><label>IG Stories Avg Impressions</label><input type="number" id="ppf-ig-s-imp" value="${e.ig_stories_impressions||""}"></div>
+    <div class="form-grid-2">
+      <div class="fld"><label>IG Avg Impressions</label><input type="number" id="ppf-ig-imp" value="${e.ig_impressions||e.ig_reels_impressions||""}"></div>
       <div class="fld"><label>TikTok Avg Impressions</label><input type="number" id="ppf-tt-imp" value="${e.tt_impressions||""}"></div>
+    </div>
+    <div class="form-section">Deliverables</div>
+    <div class="form-grid-3">
+      <div class="fld"><label>IG Feed Posts</label><input type="number" id="ppf-feed-qty" value="${d(e.ig_feed_qty,0)}" min="0"></div>
+      <div class="fld"><label>IG Reels</label><input type="number" id="ppf-reel-qty" value="${d(e.ig_reel_qty,0)}" min="0"></div>
+      <div class="fld"><label>IG Stories</label><input type="number" id="ppf-story-qty" value="${d(e.ig_story_qty,0)}" min="0"></div>
+      <div class="fld"><label>TikTok Videos</label><input type="number" id="ppf-tt-qty" value="${d(e.tt_qty,0)}" min="0"></div>
     </div>
     <div class="form-section">CPM Rates (benchmark defaults pre-filled)</div>
     <div class="form-grid-3">
@@ -518,26 +522,28 @@ async function openPaidPlanModal(row) {
     </div>
   `, async () => {
     const n = id => { const v = $(id)?.value; return v !== "" && v != null ? parseFloat(v) || null : null; };
+    const igImp = n("ppf-ig-imp");
     const payload = {
-      influencer_id:          e.influencer_id,
-      status:                 $("ppf-status").value,
-      platform_format:        $("ppf-format").value,
-      usage:                  $("ppf-usage").value,
-      exclusivity:            $("ppf-excl").value.trim(),
-      ig_reels_impressions:   n("ppf-ig-r-imp"),
-      ig_stories_impressions: n("ppf-ig-s-imp"),
-      tt_impressions:         n("ppf-tt-imp"),
-      ig_reel_cpm:            n("ppf-reel-cpm"),
-      ig_story_cpm:           n("ppf-story-cpm"),
-      ig_feed_cpm:            n("ppf-feed-cpm"),
-      tt_cpm:                 n("ppf-tt-cpm"),
-      organic_pct:            n("ppf-org-pct"),
-      paid_pct:               n("ppf-paid-pct"),
-      first_offer:            n("ppf-first"),
-      influencer_offer:       n("ppf-inf-offer"),
-      a8_counter:             n("ppf-a8c"),
-      accepted_offer:         n("ppf-accepted"),
-      notes:                  $("ppf-notes").value.trim(),
+      influencer_id:        e.influencer_id,
+      status:               $("ppf-status").value,
+      usage:                $("ppf-usage").value,
+      ig_reels_impressions: igImp,
+      tt_impressions:       n("ppf-tt-imp"),
+      ig_feed_qty:          n("ppf-feed-qty") || 0,
+      ig_reel_qty:          n("ppf-reel-qty") || 0,
+      ig_story_qty:         n("ppf-story-qty") || 0,
+      tt_qty:               n("ppf-tt-qty") || 0,
+      ig_reel_cpm:          n("ppf-reel-cpm"),
+      ig_story_cpm:         n("ppf-story-cpm"),
+      ig_feed_cpm:          n("ppf-feed-cpm"),
+      tt_cpm:               n("ppf-tt-cpm"),
+      organic_pct:          n("ppf-org-pct"),
+      paid_pct:             n("ppf-paid-pct"),
+      first_offer:          n("ppf-first"),
+      influencer_offer:     n("ppf-inf-offer"),
+      a8_counter:           n("ppf-a8c"),
+      accepted_offer:       n("ppf-accepted"),
+      notes:                $("ppf-notes").value.trim(),
     };
     if (planId) await apiPatch(`/api/paid_plan/${planId}`, payload);
     else await apiPost("/api/paid_plan", payload);
@@ -549,11 +555,12 @@ async function openPaidPlanModal(row) {
     const fD = v => v > 0 ? "$" + Math.round(v).toLocaleString() : "—";
     const updateCalc = () => {
       const nv = id => parseFloat($(id)?.value) || 0;
-      const igReel  = (nv("ppf-ig-r-imp")  * nv("ppf-reel-cpm"))  / 1000;
-      const igStory = (nv("ppf-ig-s-imp")  * nv("ppf-story-cpm")) / 1000;
-      const igFeed  = (nv("ppf-ig-r-imp")  * nv("ppf-feed-cpm"))  / 1000;
-      const tt      = (nv("ppf-tt-imp")    * nv("ppf-tt-cpm"))    / 1000;
-      const base    = igReel + igStory + igFeed + tt;
+      const igImp   = nv("ppf-ig-imp");
+      const igFeed  = nv("ppf-feed-qty")  * igImp * nv("ppf-feed-cpm")  / 1000;
+      const igReel  = nv("ppf-reel-qty")  * igImp * nv("ppf-reel-cpm")  / 1000;
+      const igStory = nv("ppf-story-qty") * igImp * nv("ppf-story-cpm") / 1000;
+      const tt      = nv("ppf-tt-qty")    * nv("ppf-tt-imp") * nv("ppf-tt-cpm") / 1000;
+      const base    = igFeed + igReel + igStory + tt;
       const org     = base * nv("ppf-org-pct") / 100;
       const paid    = base * nv("ppf-paid-pct") / 100;
       const total   = base + org + paid;
@@ -566,7 +573,8 @@ async function openPaidPlanModal(row) {
       $("ppf-c-paid").textContent = fD(paid);
       $("ppf-c-total").textContent = fD(total);
     };
-    ["ppf-ig-r-imp","ppf-ig-s-imp","ppf-tt-imp",
+    ["ppf-ig-imp","ppf-tt-imp",
+     "ppf-feed-qty","ppf-reel-qty","ppf-story-qty","ppf-tt-qty",
      "ppf-reel-cpm","ppf-story-cpm","ppf-feed-cpm","ppf-tt-cpm",
      "ppf-org-pct","ppf-paid-pct"].forEach(id => $(id)?.addEventListener("input", updateCalc));
     updateCalc(); // run immediately with existing values
@@ -623,7 +631,7 @@ function renderCalendar() {
       const es = byDay[ds]||[];
       html += `<div class="cal-day ${ds===todayStr?"is-today":""}">
         <div class="cal-day-num">${d}</div>
-        ${es.map(e=>`<div class="cal-entry">@${esc(e.influencer?.ig_handle||e.influencer?.name||"")} · ${esc(e.deliverable||"")}</div>`).join("")}
+        ${es.map(e=>`<div class="cal-entry">@${esc(e.influencer?.ig_handle||e.influencer?.name||"")} · ${fmtDeliverable(e.deliverable)}</div>`).join("")}
       </div>`;
     }
     $("cal-days").innerHTML = html;
@@ -632,13 +640,25 @@ function renderCalendar() {
     $("cal-body").innerHTML = rows.length ? rows.map(r=>`<tr>
       <td>${fmtDate(r.scheduled_date)}</td>
       <td>${esc(r.influencer?.name||"")}</td>
-      <td>${esc(r.deliverable||"")}</td>
+      <td>${fmtDeliverable(r.deliverable)}</td>
       <td>${esc(r.usage||"")}</td>
       <td>${r.collab?"✓":""}</td>
       <td>${esc(r.notes||"")}</td>
       <td><button class="btn-icon" onclick="deleteCalEntry(${r.id})">✕</button></td>
     </tr>`).join("") : `<tr><td colspan="7" class="empty-cell">No entries this month.</td></tr>`;
   }
+}
+
+function fmtDeliverable(d) {
+  try {
+    const obj = JSON.parse(d);
+    const parts = [];
+    if (obj.ig_reel  > 0) parts.push(`${obj.ig_reel}x Reel`);
+    if (obj.ig_story > 0) parts.push(`${obj.ig_story}x Story`);
+    if (obj.ig_feed  > 0) parts.push(`${obj.ig_feed}x Feed`);
+    if (obj.tiktok   > 0) parts.push(`${obj.tiktok}x TT`);
+    return parts.join(' · ') || '—';
+  } catch { return d || '—'; }
 }
 
 window.deleteCalEntry = async (id) => {
@@ -656,22 +676,37 @@ $("btn-add-cal").addEventListener("click", async () => {
     </div>
     <div class="form-grid-2">
       <div class="fld"><label>Date</label><input type="date" id="calf-date"></div>
-      <div class="fld"><label>Deliverable</label>
-        <select id="calf-del"><option>IG Reel</option><option>IG Story</option><option>IG In-Feed</option><option>TikTok</option></select>
-      </div>
       <div class="fld"><label>Usage</label>
-        <select id="calf-usage"><option>Organic</option><option>Paid</option><option>Both</option></select>
+        <select id="calf-usage">
+          <option>Organic (30 days)</option>
+          <option>Baked in Paid (30 days)</option>
+          <option>Pre-Negotiated Paid (30 days)</option>
+          <option>Other</option>
+        </select>
       </div>
       <div class="fld"><label>Collab?</label>
         <select id="calf-collab"><option value="false">No</option><option value="true">Yes</option></select>
       </div>
     </div>
+    <div class="form-section">Deliverables</div>
+    <div class="form-grid-3">
+      <div class="fld"><label>IG Reels</label><input type="number" id="calf-reel" value="0" min="0"></div>
+      <div class="fld"><label>IG Stories</label><input type="number" id="calf-story" value="0" min="0"></div>
+      <div class="fld"><label>IG In-Feed</label><input type="number" id="calf-feed" value="0" min="0"></div>
+      <div class="fld"><label>TikTok Videos</label><input type="number" id="calf-tt" value="0" min="0"></div>
+    </div>
     <div class="fld"><label>Notes</label><textarea id="calf-notes" rows="2"></textarea></div>
   `, async () => {
+    const qty = {
+      ig_reel:  parseInt($("calf-reel").value)  || 0,
+      ig_story: parseInt($("calf-story").value) || 0,
+      ig_feed:  parseInt($("calf-feed").value)  || 0,
+      tiktok:   parseInt($("calf-tt").value)    || 0,
+    };
     await apiPost("/api/content_calendar", {
       influencer_id:  parseInt($("calf-inf").value),
       scheduled_date: $("calf-date").value,
-      deliverable:    $("calf-del").value,
+      deliverable:    JSON.stringify(qty),
       usage:          $("calf-usage").value,
       collab:         $("calf-collab").value === "true",
       notes:          $("calf-notes").value.trim(),
@@ -681,6 +716,13 @@ $("btn-add-cal").addEventListener("click", async () => {
 });
 
 // ── 5. Content Review ─────────────────────────────────────────────────────────
+const CR_DELIVERABLES = [
+  "Instagram Reel", "Instagram Reel share to Story", "Instagram In-Feed (Still)",
+  "Instagram Carousel", "Instagram Story (3-5 frames)",
+  "TikTok", "IG/TT Syndication", "Substack", "YouTube",
+];
+const CR_CAMPAIGNS = ["A8 Paid Influencers", "MadeGood Paid Influencers", "Shipping & PR Mailers"];
+
 async function loadContentReview() {
   const data = await apiGet("/api/content_review");
   const filter = $("cr-filter-status")?.value;
@@ -688,24 +730,85 @@ async function loadContentReview() {
   if (filter === "true")  rows = rows.filter(r => r.approved_by_client);
   if (filter === "false") rows = rows.filter(r => !r.approved_by_client);
 
-  $("cr-body").innerHTML = rows.length ? rows.map(r=>`<tr>
-    <td>${esc(r.influencer?.name||"")}</td>
-    <td>${esc(r.campaign||"")}</td>
-    <td>${esc(r.deliverable_type||"")}</td>
-    <td>${fmtDate(r.content_due_date)}</td>
-    <td>${fmtDate(r.live_date)}</td>
-    <td>${r.content_v1 ? `<a href="${esc(r.content_v1)}" target="_blank">V1 ↗</a>` : "—"}</td>
-    <td>${esc(r.a8_feedback_v1||"")}</td>
-    <td>${esc(r.client_feedback_v1||"")}</td>
-    <td>${r.content_v2 ? `<a href="${esc(r.content_v2)}" target="_blank">V2 ↗</a>` : "—"}</td>
-    <td><input type="checkbox" ${r.approved_by_client?"checked":""} onchange="toggleApproval(${r.id}, this.checked)"></td>
-    <td><button class="btn-icon btn-edit-cr" data-id="${r.id}">✏</button></td>
-  </tr>`).join("") : `<tr><td colspan="11" class="empty-cell">No content review entries yet.</td></tr>`;
+  const iS = "background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:11px;width:100%;min-width:80px";
+  const saveCR = (id, field) => async (e) => {
+    await apiPatch(`/api/content_review/${id}`, {[field]: e.target.value || null});
+  };
 
-  document.querySelectorAll(".btn-edit-cr").forEach(b=>
-    b.addEventListener("click", ()=>{
-      const row = rows.find(r=>String(r.id)===b.dataset.id);
+  $("cr-body").innerHTML = rows.length ? rows.map(r => `<tr>
+    <td style="white-space:nowrap"><strong>${esc(r.influencer?.name||"")}</strong></td>
+    <td>
+      <select class="cr-campaign" data-id="${r.id}" style="${iS}">
+        <option value="">—</option>
+        ${CR_CAMPAIGNS.map(c=>`<option ${r.campaign===c?"selected":""}>${esc(c)}</option>`).join("")}
+      </select>
+    </td>
+    <td>
+      <select class="cr-del" data-id="${r.id}" style="${iS}">
+        <option value="">—</option>
+        ${CR_DELIVERABLES.map(d=>`<option ${r.deliverable_type===d?"selected":""}>${esc(d)}</option>`).join("")}
+      </select>
+    </td>
+    <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS}"></td>
+    <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS}"></td>
+    <td><input class="cr-concept" data-id="${r.id}" value="${esc(r.concept||"")}" placeholder="Concept" style="${iS};min-width:120px"></td>
+    <td>
+      <div style="display:flex;align-items:center;gap:4px">
+        <input class="cr-cv1" data-id="${r.id}" value="${esc(r.content_v1||"")}" placeholder="Link…" style="${iS}">
+        ${r.content_v1 ? `<a href="${esc(r.content_v1)}" target="_blank" style="color:var(--red);font-size:12px">↗</a>` : ""}
+      </div>
+    </td>
+    <td><input class="cr-cap1" data-id="${r.id}" value="${esc(r.caption_v1||"")}" placeholder="Caption" style="${iS};min-width:100px"></td>
+    <td><input class="cr-af1" data-id="${r.id}" value="${esc(r.a8_feedback_v1||"")}" placeholder="A8 notes" style="${iS};min-width:100px"></td>
+    <td style="background:rgba(202,1,0,.06)"><input class="cr-cf1" data-id="${r.id}" value="${esc(r.client_feedback_v1||"")}" placeholder="Client feedback" style="${iS};min-width:120px"></td>
+    <td>
+      <div style="display:flex;align-items:center;gap:4px">
+        <input class="cr-cv2" data-id="${r.id}" value="${esc(r.content_v2||"")}" placeholder="Link…" style="${iS}">
+        ${r.content_v2 ? `<a href="${esc(r.content_v2)}" target="_blank" style="color:var(--red);font-size:12px">↗</a>` : ""}
+      </div>
+    </td>
+    <td><input class="cr-cap2" data-id="${r.id}" value="${esc(r.caption_v2||"")}" placeholder="Caption" style="${iS};min-width:100px"></td>
+    <td><input class="cr-af2" data-id="${r.id}" value="${esc(r.a8_feedback_v2||"")}" placeholder="A8 notes" style="${iS};min-width:100px"></td>
+    <td style="background:rgba(202,1,0,.06)"><input class="cr-cf2" data-id="${r.id}" value="${esc(r.client_feedback_v2||"")}" placeholder="Client feedback" style="${iS};min-width:120px"></td>
+    <td style="text-align:center"><input type="checkbox" ${r.approved_by_client?"checked":""} onchange="toggleApproval(${r.id}, this.checked)"></td>
+    <td style="white-space:nowrap">
+      <button class="btn-icon btn-edit-cr" data-id="${r.id}" title="Edit">✏</button>
+      <button class="btn-icon btn-del-cr" data-id="${r.id}" title="Delete" style="color:#666">✕</button>
+    </td>
+  </tr>`).join("") : `<tr><td colspan="16" class="empty-cell">No content review entries yet.</td></tr>`;
+
+  // Inline save handlers
+  document.querySelectorAll(".cr-campaign").forEach(s => s.addEventListener("change", saveCR(s.dataset.id, "campaign")(({target:s})=>({target:{value:s.value}}))));
+  // Use a unified approach for all inline fields
+  const wire = (cls, field, evt="blur") =>
+    document.querySelectorAll(`.${cls}`).forEach(el =>
+      el.addEventListener(evt, () => apiPatch(`/api/content_review/${el.dataset.id}`, {[field]: el.value || null}))
+    );
+  wire("cr-campaign",  "campaign",            "change");
+  wire("cr-del",       "deliverable_type",     "change");
+  wire("cr-due",       "content_due_date",     "change");
+  wire("cr-live",      "live_date",            "change");
+  wire("cr-concept",   "concept");
+  wire("cr-cv1",       "content_v1");
+  wire("cr-cap1",      "caption_v1");
+  wire("cr-af1",       "a8_feedback_v1");
+  wire("cr-cf1",       "client_feedback_v1");
+  wire("cr-cv2",       "content_v2");
+  wire("cr-cap2",      "caption_v2");
+  wire("cr-af2",       "a8_feedback_v2");
+  wire("cr-cf2",       "client_feedback_v2");
+
+  document.querySelectorAll(".btn-edit-cr").forEach(b =>
+    b.addEventListener("click", () => {
+      const row = rows.find(r => String(r.id) === b.dataset.id);
       if (row) openContentReviewModal(row);
+    })
+  );
+  document.querySelectorAll(".btn-del-cr").forEach(b =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Delete this entry?")) return;
+      await fetch(`/api/content_review/${b.dataset.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+      loadContentReview();
     })
   );
 }
@@ -721,45 +824,58 @@ async function openContentReviewModal(existing) {
   await getInfluencers();
   const isEdit = !!existing;
   const e = existing || {};
-  openModal(isEdit?"Edit Content Review":"Add Content Review", `
+  const inPaidPlan = allInfluencers.filter(i => i.in_paid_plan);
+  openModal(isEdit ? "Edit Entry" : "Add Content Review", `
     <div class="form-grid-2">
       <div class="fld"><label>Creator</label>
-        <select id="crf-inf">${allInfluencers.filter(i=>i.in_paid_plan).map(i=>`<option value="${i.id}" ${e.influencer_id===i.id?"selected":""}>${esc(i.name||i.ig_handle)}</option>`).join("")}</select>
+        <select id="crf-inf">
+          <option value="">— select —</option>
+          ${inPaidPlan.map(i=>`<option value="${i.id}" ${e.influencer_id===i.id?"selected":""}>${esc(i.name||i.ig_handle)}</option>`).join("")}
+        </select>
       </div>
-      <div class="fld"><label>Campaign</label><input id="crf-campaign" value="${esc(e.campaign||"")}"></div>
-      <div class="fld"><label>Deliverable</label><input id="crf-del" value="${esc(e.deliverable_type||"")}"></div>
+      <div class="fld"><label>Campaign</label>
+        <select id="crf-campaign">
+          <option value="">—</option>
+          ${CR_CAMPAIGNS.map(c=>`<option ${e.campaign===c?"selected":""}>${esc(c)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="fld"><label>Deliverable</label>
+        <select id="crf-del">
+          <option value="">—</option>
+          ${CR_DELIVERABLES.map(d=>`<option ${e.deliverable_type===d?"selected":""}>${esc(d)}</option>`).join("")}
+        </select>
+      </div>
       <div class="fld"><label>Content Due</label><input type="date" id="crf-due" value="${e.content_due_date||""}"></div>
       <div class="fld"><label>Live Date</label><input type="date" id="crf-live" value="${e.live_date||""}"></div>
       <div class="fld"><label>Month</label><input id="crf-month" value="${esc(e.month||"")}"></div>
     </div>
-    <div class="fld"><label>Concept</label><textarea id="crf-concept" rows="3">${esc(e.concept||"")}</textarea></div>
-    <div class="form-section">Content Versions</div>
-    <div class="fld"><label>Content V1 (link)</label><input id="crf-cv1" value="${esc(e.content_v1||"")}"></div>
-    <div class="fld"><label>A8 Feedback V1</label><textarea id="crf-af1" rows="2">${esc(e.a8_feedback_v1||"")}</textarea></div>
-    <div class="fld"><label>Client Feedback V1</label><textarea id="crf-cf1" rows="2">${esc(e.client_feedback_v1||"")}</textarea></div>
-    <div class="fld"><label>Content V2 (link)</label><input id="crf-cv2" value="${esc(e.content_v2||"")}"></div>
-    <div class="fld"><label>A8 Feedback V2</label><textarea id="crf-af2" rows="2">${esc(e.a8_feedback_v2||"")}</textarea></div>
-    <div class="fld"><label>Client Feedback V2</label><textarea id="crf-cf2" rows="2">${esc(e.client_feedback_v2||"")}</textarea></div>
-  `, async ()=>{
+  `, async () => {
     const payload = {
-      influencer_id: parseInt($("crf-inf").value),
-      campaign:      $("crf-campaign").value.trim(),
-      deliverable_type: $("crf-del").value.trim(),
+      influencer_id:    parseInt($("crf-inf").value),
+      campaign:         $("crf-campaign").value,
+      deliverable_type: $("crf-del").value,
       content_due_date: $("crf-due").value || null,
-      live_date:     $("crf-live").value || null,
-      month:         $("crf-month").value.trim(),
-      concept:       $("crf-concept").value.trim(),
-      content_v1:    $("crf-cv1").value.trim(),
-      a8_feedback_v1: $("crf-af1").value.trim(),
-      client_feedback_v1: $("crf-cf1").value.trim(),
-      content_v2:    $("crf-cv2").value.trim(),
-      a8_feedback_v2: $("crf-af2").value.trim(),
-      client_feedback_v2: $("crf-cf2").value.trim(),
+      live_date:        $("crf-live").value || null,
+      month:            $("crf-month").value.trim(),
     };
     if (isEdit) await apiPatch(`/api/content_review/${existing.id}`, payload);
     else await apiPost("/api/content_review", payload);
     closeModal(); loadContentReview();
   });
+
+  // Auto-populate deliverable when creator is selected
+  setTimeout(() => {
+    $("crf-inf")?.addEventListener("change", () => {
+      const infId = parseInt($("crf-inf").value);
+      const plan = ppRows.find(p => p.influencer_id === infId);
+      if (!plan) return;
+      // Set deliverable to primary type from paid plan
+      if (plan.ig_reel_qty > 0)       $("crf-del").value = "Instagram Reel";
+      else if (plan.ig_story_qty > 0)  $("crf-del").value = "Instagram Story (3-5 frames)";
+      else if (plan.ig_feed_qty > 0)   $("crf-del").value = "Instagram In-Feed (Still)";
+      else if (plan.tt_qty > 0)        $("crf-del").value = "TikTok";
+    });
+  }, 0);
 }
 
 // ── 6. Live Posts ─────────────────────────────────────────────────────────────
