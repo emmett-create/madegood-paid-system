@@ -757,6 +757,16 @@ const CR_DELIVERABLES = [
   "Instagram Carousel", "Instagram Story (3-5 frames)",
   "TikTok", "IG/TT Syndication", "Substack", "YouTube",
 ];
+
+function ppDeliverableSummary(plan) {
+  if (!plan) return "";
+  const parts = [];
+  if (plan.ig_reel_qty  > 0) parts.push(`${plan.ig_reel_qty} Reel${plan.ig_reel_qty  > 1 ? "s" : ""}`);
+  if (plan.ig_story_qty > 0) parts.push(`${plan.ig_story_qty} Stor${plan.ig_story_qty > 1 ? "ies" : "y"}`);
+  if (plan.ig_feed_qty  > 0) parts.push(`${plan.ig_feed_qty} In-Feed`);
+  if (plan.tt_qty       > 0) parts.push(`${plan.tt_qty} TikTok${plan.tt_qty > 1 ? "s" : ""}`);
+  return parts.join(" · ");
+}
 const CR_CAMPAIGNS = ["A8 Paid Influencers", "MadeGood Paid Influencers", "Shipping & PR Mailers"];
 const CR_STATUSES  = ["New! Needs Client Review", "Client Reviewed: Approved", "Client Reviewed: Needs Edits"];
 
@@ -797,12 +807,7 @@ async function loadContentReview() {
         ${CR_CAMPAIGNS.map(c=>`<option ${r.campaign===c?"selected":""}>${esc(c)}</option>`).join("")}
       </select>
     </td>
-    <td>
-      <select class="cr-del" data-id="${r.id}" style="${iS};min-width:160px">
-        <option value="">—</option>
-        ${CR_DELIVERABLES.map(d=>`<option ${r.deliverable_type===d?"selected":""}>${esc(d)}</option>`).join("")}
-      </select>
-    </td>
+    <td><input class="cr-del" data-id="${r.id}" value="${esc(r.deliverable_type||"")}" placeholder="e.g. 1 Reel · 1 TikTok" style="${iS};min-width:160px"></td>
     <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:120px"></td>
     <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:120px"></td>
     <td><input class="cr-concept" data-id="${r.id}" value="${esc(r.concept||"")}" placeholder="Concept" style="${iS};min-width:120px"></td>
@@ -838,7 +843,7 @@ async function loadContentReview() {
     );
   wire("cr-status",    "status",               "change");
   wire("cr-campaign",  "campaign",             "change");
-  wire("cr-del",       "deliverable_type",     "change");
+  wire("cr-del",       "deliverable_type");
   wire("cr-due",       "content_due_date",     "change");
   wire("cr-live",      "live_date",            "change");
   wire("cr-concept",   "concept");
@@ -864,6 +869,24 @@ async function loadContentReview() {
       loadContentReview();
     })
   );
+
+  // Auto-fill deliverables from Paid Plan qtys (fills all rows, saves to DB)
+  setTimeout(async () => {
+    if (!ppRows.length) {
+      try { ppRows = await apiGet("/api/paid_plan"); } catch {}
+    }
+    rows.forEach(r => {
+      const plan = ppRows.find(p => p.influencer_id === r.influencer_id);
+      const summary = ppDeliverableSummary(plan);
+      if (!summary) return;
+      // Always update to the latest Paid Plan summary
+      const inp = document.querySelector(`.cr-del[data-id="${r.id}"]`);
+      if (inp && inp.value !== summary) {
+        inp.value = summary;
+        apiPatch(`/api/content_review/${r.id}`, {deliverable_type: summary});
+      }
+    });
+  }, 0);
 }
 
 window.toggleApproval = async (id, val) => {
@@ -892,11 +915,8 @@ async function openContentReviewModal(existing) {
           ${CR_CAMPAIGNS.map(c=>`<option ${e.campaign===c?"selected":""}>${esc(c)}</option>`).join("")}
         </select>
       </div>
-      <div class="fld"><label>Deliverable</label>
-        <select id="crf-del">
-          <option value="">—</option>
-          ${CR_DELIVERABLES.map(d=>`<option ${e.deliverable_type===d?"selected":""}>${esc(d)}</option>`).join("")}
-        </select>
+      <div class="fld"><label>Deliverable (auto-fills from Paid Plan)</label>
+        <input id="crf-del" value="${esc(e.deliverable_type||"")}" placeholder="e.g. 1 Reel · 1 TikTok">
       </div>
       <div class="fld"><label>Content Due</label><input type="date" id="crf-due" value="${e.content_due_date||""}"></div>
       <div class="fld"><label>Live Date</label><input type="date" id="crf-live" value="${e.live_date||""}"></div>
@@ -927,13 +947,8 @@ async function openContentReviewModal(existing) {
       const infId = parseInt($("crf-inf")?.value);
       if (!infId) return;
       const plan = ppRows.find(p => p.influencer_id === infId);
-      if (!plan) return;
-      // Only auto-fill if deliverable not already set
-      if ($("crf-del").value) return;
-      if (plan.ig_reel_qty > 0)        $("crf-del").value = "Instagram Reel";
-      else if (plan.ig_story_qty > 0)  $("crf-del").value = "Instagram Story (3-5 frames)";
-      else if (plan.ig_feed_qty > 0)   $("crf-del").value = "Instagram In-Feed (Still)";
-      else if (plan.tt_qty > 0)        $("crf-del").value = "TikTok";
+      const summary = ppDeliverableSummary(plan);
+      if (summary) $("crf-del").value = summary;
     };
 
     applyAutoFill(); // fire immediately on open
