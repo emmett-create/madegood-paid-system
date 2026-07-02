@@ -348,7 +348,14 @@ const STATUS_BADGE = {
 let ppRows = []; // module-level so auto-fill can access
 
 async function loadPaidPlan() {
-  const data = await apiGet("/api/paid_plan");
+  let data;
+  try {
+    data = await apiGet("/api/paid_plan");
+    if (!Array.isArray(data)) throw new Error(data?.detail || JSON.stringify(data));
+  } catch(err) {
+    $("pp-body").innerHTML = `<tr><td colspan="31" class="empty-cell" style="color:var(--red)">Failed to load: ${esc(String(err.message))}</td></tr>`;
+    return;
+  }
   const search = $("pp-search")?.value.toLowerCase() || "";
   const status = $("pp-filter-status")?.value || "";
   ppRows = data;
@@ -629,12 +636,40 @@ function renderCalendar() {
     for (let d=1;d<=daysInMo;d++) {
       const ds = `${calY}-${pad(calM+1)}-${pad(d)}`;
       const es = byDay[ds]||[];
-      html += `<div class="cal-day ${ds===todayStr?"is-today":""}">
+      html += `<div class="cal-day ${ds===todayStr?"is-today":""}" data-date="${ds}" style="cursor:pointer">
         <div class="cal-day-num">${d}</div>
         ${es.map(e=>`<div class="cal-entry">@${esc(e.influencer?.ig_handle||e.influencer?.name||"")} · ${fmtDeliverable(e.deliverable)}</div>`).join("")}
       </div>`;
     }
     $("cal-days").innerHTML = html;
+
+    // Clickable days — show detail panel
+    const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    document.querySelectorAll(".cal-day[data-date]").forEach(cell => {
+      cell.addEventListener("click", () => {
+        document.querySelectorAll(".cal-day.selected").forEach(c => c.classList.remove("selected"));
+        cell.classList.add("selected");
+        const ds = cell.dataset.date;
+        const entries = byDay[ds] || [];
+        const [y, m, d] = ds.split("-");
+        $("cal-detail-date").textContent = `${MONTHS[parseInt(m)-1]} ${parseInt(d)}, ${y}`;
+        if (!entries.length) {
+          $("cal-detail-body").innerHTML = `<span style="color:var(--dim);font-size:12px">No entries for this day.</span>`;
+        } else {
+          $("cal-detail-body").innerHTML = entries.map(e => `
+            <div class="cal-detail-entry">
+              <div class="cal-detail-creator">@${esc(e.influencer?.ig_handle||e.influencer?.name||"Unknown")}</div>
+              <div class="cal-detail-meta">
+                <span><strong>${fmtDeliverable(e.deliverable)}</strong></span>
+                ${e.usage ? `<span>Usage: <strong>${esc(e.usage)}</strong></span>` : ""}
+                <span>Collab: <strong>${e.collab ? "Yes" : "No"}</strong></span>
+                ${e.notes ? `<span>Notes: <strong>${esc(e.notes)}</strong></span>` : ""}
+              </div>
+            </div>`).join("");
+        }
+        $("cal-detail").classList.remove("hidden");
+      });
+    });
   } else {
     const rows = calRows.filter(r => r.scheduled_date?.startsWith(`${calY}-${pad(calM+1)}`));
     $("cal-body").innerHTML = rows.length ? rows.map(r=>`<tr>
@@ -863,18 +898,28 @@ async function openContentReviewModal(existing) {
     closeModal(); loadContentReview();
   });
 
-  // Auto-populate deliverable when creator is selected
-  setTimeout(() => {
-    $("crf-inf")?.addEventListener("change", () => {
-      const infId = parseInt($("crf-inf").value);
+  // Auto-populate deliverable when creator is selected (or on modal open)
+  setTimeout(async () => {
+    // Ensure ppRows is populated (user may not have visited Paid Plan tab yet)
+    if (!ppRows.length) {
+      try { ppRows = await apiGet("/api/paid_plan"); } catch {}
+    }
+
+    const applyAutoFill = () => {
+      const infId = parseInt($("crf-inf")?.value);
+      if (!infId) return;
       const plan = ppRows.find(p => p.influencer_id === infId);
       if (!plan) return;
-      // Set deliverable to primary type from paid plan
-      if (plan.ig_reel_qty > 0)       $("crf-del").value = "Instagram Reel";
+      // Only auto-fill if deliverable not already set
+      if ($("crf-del").value) return;
+      if (plan.ig_reel_qty > 0)        $("crf-del").value = "Instagram Reel";
       else if (plan.ig_story_qty > 0)  $("crf-del").value = "Instagram Story (3-5 frames)";
       else if (plan.ig_feed_qty > 0)   $("crf-del").value = "Instagram In-Feed (Still)";
       else if (plan.tt_qty > 0)        $("crf-del").value = "TikTok";
-    });
+    };
+
+    applyAutoFill(); // fire immediately on open
+    $("crf-inf")?.addEventListener("change", applyAutoFill);
   }, 0);
 }
 

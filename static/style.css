@@ -151,3 +151,19 @@ a:hover { text-decoration: underline; }
 /* ── View toggle buttons ── */
 .view-btn { background: var(--panel2); border: 1px solid var(--border); color: var(--dim); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
 .view-btn.active { background: var(--panel); color: var(--text); border-color: var(--red); }
+
+/* ── Date picker calendar icon (dark theme fix) ── */
+input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; opacity: .7; }
+input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+/* ── Calendar day selected state ── */
+.cal-day.selected { border-color: var(--blue); background: rgba(88,166,255,.08); }
+
+/* ── Calendar day detail panel ── */
+.cal-detail { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin-top: 12px; min-height: 60px; }
+.cal-detail-date { font-weight: 700; font-size: 14px; margin-bottom: 10px; color: var(--text); }
+.cal-detail-entry { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
+.cal-detail-entry:last-child { margin-bottom: 0; }
+.cal-detail-creator { font-weight: 700; color: var(--red); font-size: 13px; }
+.cal-detail-meta { font-size: 12px; color: var(--dim); display: flex; gap: 16px; flex-wrap: wrap; }
+.cal-detail-meta span strong { color: var(--text); }
