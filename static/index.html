@@ -246,8 +246,9 @@
           <div class="panel-actions">
             <select id="cr-filter-status" class="filter-sel">
               <option value="">All</option>
-              <option value="false">Pending Approval</option>
-              <option value="true">Approved</option>
+              <option value="needs_review">Needs Client Review</option>
+              <option value="approved">Client Approved</option>
+              <option value="needs_edits">Needs Edits</option>
             </select>
             <button class="btn-pri" id="btn-add-cr">+ Add</button>
           </div>
@@ -256,7 +257,14 @@
           <table class="tbl" id="cr-table">
             <thead>
               <tr>
+                <th>Status</th>
                 <th>Creator</th>
+                <th>IG Handle</th>
+                <th>TT Handle</th>
+                <th>IG Followers</th>
+                <th>TT Followers</th>
+                <th>Tier</th>
+                <th>Vertical/Archetype</th>
                 <th>Campaign</th>
                 <th>Deliverable</th>
                 <th>Due</th>
@@ -274,7 +282,7 @@
                 <th></th>
               </tr>
             </thead>
-            <tbody id="cr-body"><tr><td colspan="16" class="empty-cell">Loading…</td></tr></tbody>
+            <tbody id="cr-body"><tr><td colspan="23" class="empty-cell">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>

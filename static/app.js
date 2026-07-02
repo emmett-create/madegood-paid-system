@@ -267,7 +267,7 @@ function openInfluencerModal(existing) {
     closeModal(); loadMasterList();
   });
 
-  // Wire up tier autofill after modal renders
+  // Wire up tier autofill after modal renders — run immediately AND on change
   setTimeout(() => {
     const updateTier = () => {
       const t = calcTier($("mf-ig-fol")?.value, $("mf-tt-fol")?.value);
@@ -275,6 +275,7 @@ function openInfluencerModal(existing) {
     };
     $("mf-ig-fol")?.addEventListener("input", updateTier);
     $("mf-tt-fol")?.addEventListener("input", updateTier);
+    updateTier(); // auto-fill on open with existing values
   }, 0);
 }
 
@@ -352,10 +353,6 @@ async function loadPaidPlan() {
   try {
     data = await apiGet("/api/paid_plan");
     if (!Array.isArray(data)) throw new Error(data?.detail || JSON.stringify(data));
-  } catch(err) {
-    $("pp-body").innerHTML = `<tr><td colspan="31" class="empty-cell" style="color:var(--red)">Failed to load: ${esc(String(err.message))}</td></tr>`;
-    return;
-  }
   const search = $("pp-search")?.value.toLowerCase() || "";
   const status = $("pp-filter-status")?.value || "";
   ppRows = data;
@@ -369,6 +366,7 @@ async function loadPaidPlan() {
 
   $("pp-body").innerHTML = rows.length ? rows.map((r, i) => {
     const inf  = r.influencer || {};
+    const fmt_ = r.platform_format || "";
     const igImp = r.ig_impressions || r.ig_reels_impressions || 0;
     const feedQty  = r.ig_feed_qty  || 0;
     const reelQty  = r.ig_reel_qty  || 0;
@@ -438,6 +436,9 @@ async function loadPaidPlan() {
       loadPaidPlan();
     })
   );
+  } catch(err) {
+    $("pp-body").innerHTML = `<tr><td colspan="31" class="empty-cell" style="color:var(--red)">Error rendering table: ${esc(String(err.message))}</td></tr>`;
+  }
 }
 
 // Auto-fill defaults across all existing plan records
@@ -757,40 +758,58 @@ const CR_DELIVERABLES = [
   "TikTok", "IG/TT Syndication", "Substack", "YouTube",
 ];
 const CR_CAMPAIGNS = ["A8 Paid Influencers", "MadeGood Paid Influencers", "Shipping & PR Mailers"];
+const CR_STATUSES  = ["New! Needs Client Review", "Client Reviewed: Approved", "Client Reviewed: Needs Edits"];
 
 async function loadContentReview() {
   const data = await apiGet("/api/content_review");
   const filter = $("cr-filter-status")?.value;
   let rows = data;
-  if (filter === "true")  rows = rows.filter(r => r.approved_by_client);
-  if (filter === "false") rows = rows.filter(r => !r.approved_by_client);
+  if (filter === "needs_review") rows = rows.filter(r => r.status === "New! Needs Client Review");
+  if (filter === "approved")     rows = rows.filter(r => r.status === "Client Reviewed: Approved");
+  if (filter === "needs_edits")  rows = rows.filter(r => r.status === "Client Reviewed: Needs Edits");
 
-  const iS = "background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:11px;width:100%;min-width:80px";
-  const saveCR = (id, field) => async (e) => {
-    await apiPatch(`/api/content_review/${id}`, {[field]: e.target.value || null});
+  const iS  = "background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:11px;width:100%";
+  const badgeCR = s => {
+    if (!s) return `<span style="color:var(--dim);font-size:11px">—</span>`;
+    const col = s.includes("Approved") ? "var(--green)" : s.includes("Edits") ? "var(--red)" : "var(--yellow)";
+    return `<span style="color:${col};font-weight:600;font-size:11px;white-space:nowrap">${esc(s)}</span>`;
   };
 
-  $("cr-body").innerHTML = rows.length ? rows.map(r => `<tr>
-    <td style="white-space:nowrap"><strong>${esc(r.influencer?.name||"")}</strong></td>
+  $("cr-body").innerHTML = rows.length ? rows.map(r => {
+    const inf = r.influencer || {};
+    return `<tr>
     <td>
-      <select class="cr-campaign" data-id="${r.id}" style="${iS}">
+      <select class="cr-status" data-id="${r.id}" style="${iS};min-width:140px">
+        <option value="">—</option>
+        ${CR_STATUSES.map(s=>`<option ${r.status===s?"selected":""}>${esc(s)}</option>`).join("")}
+      </select>
+    </td>
+    <td style="white-space:nowrap"><strong>${esc(inf.name||"")}</strong></td>
+    <td>${inf.ig_handle ? `<a href="${esc(inf.ig_url||`https://instagram.com/${inf.ig_handle}`)}" target="_blank" style="color:var(--red)">@${esc(inf.ig_handle)}</a>` : "—"}</td>
+    <td>${inf.tt_handle ? `<a href="${esc(inf.tt_url||`https://tiktok.com/@${inf.tt_handle}`)}" target="_blank" style="color:var(--red)">@${esc(inf.tt_handle)}</a>` : "—"}</td>
+    <td style="color:var(--dim)">${inf.ig_followers ? Number(inf.ig_followers).toLocaleString() : "—"}</td>
+    <td style="color:var(--dim)">${inf.tt_followers ? Number(inf.tt_followers).toLocaleString() : "—"}</td>
+    <td>${inf.tier ? `<span class="badge badge-int">${esc(inf.tier)}</span>` : "—"}</td>
+    <td style="font-size:11px;color:var(--dim)">${esc(inf.vertical||inf.archetype||"")}</td>
+    <td>
+      <select class="cr-campaign" data-id="${r.id}" style="${iS};min-width:160px">
         <option value="">—</option>
         ${CR_CAMPAIGNS.map(c=>`<option ${r.campaign===c?"selected":""}>${esc(c)}</option>`).join("")}
       </select>
     </td>
     <td>
-      <select class="cr-del" data-id="${r.id}" style="${iS}">
+      <select class="cr-del" data-id="${r.id}" style="${iS};min-width:160px">
         <option value="">—</option>
         ${CR_DELIVERABLES.map(d=>`<option ${r.deliverable_type===d?"selected":""}>${esc(d)}</option>`).join("")}
       </select>
     </td>
-    <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS}"></td>
-    <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS}"></td>
+    <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:120px"></td>
+    <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:120px"></td>
     <td><input class="cr-concept" data-id="${r.id}" value="${esc(r.concept||"")}" placeholder="Concept" style="${iS};min-width:120px"></td>
     <td>
       <div style="display:flex;align-items:center;gap:4px">
-        <input class="cr-cv1" data-id="${r.id}" value="${esc(r.content_v1||"")}" placeholder="Link…" style="${iS}">
-        ${r.content_v1 ? `<a href="${esc(r.content_v1)}" target="_blank" style="color:var(--red);font-size:12px">↗</a>` : ""}
+        <input class="cr-cv1" data-id="${r.id}" value="${esc(r.content_v1||"")}" placeholder="Link…" style="${iS};min-width:80px">
+        ${r.content_v1 ? `<a href="${esc(r.content_v1)}" target="_blank" style="color:var(--red);font-size:12px;flex-shrink:0">↗</a>` : ""}
       </div>
     </td>
     <td><input class="cr-cap1" data-id="${r.id}" value="${esc(r.caption_v1||"")}" placeholder="Caption" style="${iS};min-width:100px"></td>
@@ -798,8 +817,8 @@ async function loadContentReview() {
     <td style="background:rgba(202,1,0,.06)"><input class="cr-cf1" data-id="${r.id}" value="${esc(r.client_feedback_v1||"")}" placeholder="Client feedback" style="${iS};min-width:120px"></td>
     <td>
       <div style="display:flex;align-items:center;gap:4px">
-        <input class="cr-cv2" data-id="${r.id}" value="${esc(r.content_v2||"")}" placeholder="Link…" style="${iS}">
-        ${r.content_v2 ? `<a href="${esc(r.content_v2)}" target="_blank" style="color:var(--red);font-size:12px">↗</a>` : ""}
+        <input class="cr-cv2" data-id="${r.id}" value="${esc(r.content_v2||"")}" placeholder="Link…" style="${iS};min-width:80px">
+        ${r.content_v2 ? `<a href="${esc(r.content_v2)}" target="_blank" style="color:var(--red);font-size:12px;flex-shrink:0">↗</a>` : ""}
       </div>
     </td>
     <td><input class="cr-cap2" data-id="${r.id}" value="${esc(r.caption_v2||"")}" placeholder="Caption" style="${iS};min-width:100px"></td>
@@ -810,16 +829,15 @@ async function loadContentReview() {
       <button class="btn-icon btn-edit-cr" data-id="${r.id}" title="Edit">✏</button>
       <button class="btn-icon btn-del-cr" data-id="${r.id}" title="Delete" style="color:#666">✕</button>
     </td>
-  </tr>`).join("") : `<tr><td colspan="16" class="empty-cell">No content review entries yet.</td></tr>`;
+  </tr>`;}).join("") : `<tr><td colspan="24" class="empty-cell">No content review entries yet.</td></tr>`;
 
   // Inline save handlers
-  document.querySelectorAll(".cr-campaign").forEach(s => s.addEventListener("change", saveCR(s.dataset.id, "campaign")(({target:s})=>({target:{value:s.value}}))));
-  // Use a unified approach for all inline fields
   const wire = (cls, field, evt="blur") =>
     document.querySelectorAll(`.${cls}`).forEach(el =>
       el.addEventListener(evt, () => apiPatch(`/api/content_review/${el.dataset.id}`, {[field]: el.value || null}))
     );
-  wire("cr-campaign",  "campaign",            "change");
+  wire("cr-status",    "status",               "change");
+  wire("cr-campaign",  "campaign",             "change");
   wire("cr-del",       "deliverable_type",     "change");
   wire("cr-due",       "content_due_date",     "change");
   wire("cr-live",      "live_date",            "change");
