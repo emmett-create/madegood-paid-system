@@ -344,35 +344,55 @@ const STATUS_BADGE = {
   "Locked":          "badge-locked",
 };
 
+let ppRows = []; // module-level so auto-fill can access
+
 async function loadPaidPlan() {
   const data = await apiGet("/api/paid_plan");
   const search = $("pp-search")?.value.toLowerCase() || "";
   const status = $("pp-filter-status")?.value || "";
-  let rows = data;
+  ppRows = data;
+  let rows = ppRows;
   if (search) rows = rows.filter(r => (r.influencer?.name||"").toLowerCase().includes(search));
   if (status) rows = rows.filter(r => r.status === status);
 
+  const fC = v => v > 0 ? `<span style="color:var(--text)">$${Math.round(v).toLocaleString()}</span>` : `<span style="color:var(--dim)">—</span>`;
+  const fP = v => v != null ? `${v}%` : "—";
+
   $("pp-body").innerHTML = rows.length ? rows.map((r, i) => {
-    const est = calcEstCost(r);
+    const igFeedCost  = ((r.ig_reels_impressions||0)  * (r.ig_feed_cpm||0))  / 1000;
+    const igReelCost  = ((r.ig_reels_impressions||0)  * (r.ig_reel_cpm||0))  / 1000;
+    const igStoryCost = ((r.ig_stories_impressions||0) * (r.ig_story_cpm||0)) / 1000;
+    const ttCost      = ((r.tt_impressions||0)         * (r.tt_cpm||0))       / 1000;
+    const cpmEst      = igFeedCost + igReelCost + igStoryCost + ttCost;
+    const totalImpr   = (r.ig_reels_impressions||0) + (r.ig_stories_impressions||0) + (r.tt_impressions||0);
+    const orgPct      = r.organic_pct ?? 10;
+    const paidPct     = r.paid_pct ?? 30;
+    const orgD        = cpmEst * orgPct / 100;
+    const paidD       = cpmEst * paidPct / 100;
+    const totalEst    = cpmEst + orgD + paidD;
     return `<tr>
-      <td>${r.status ? `<span class="badge ${STATUS_BADGE[r.status]||""}">${esc(r.status)}</span>` : "<span style='color:var(--dim);font-size:11px'>Not set</span>"}</td>
+      <td>${r.status ? `<span class="badge ${STATUS_BADGE[r.status]||""}">${esc(r.status)}</span>` : `<span style="color:var(--dim);font-size:11px">—</span>`}</td>
       <td><strong>${esc(r.influencer?.name||"Unknown")}</strong></td>
-      <td>${esc(r.platform_format||"")}</td>
-      <td>${esc(r.usage||"")}</td>
-      <td>${esc(r.exclusivity||"")}</td>
-      <td>${fmt(r.ig_reels_impressions)}</td>
-      <td>${fmt(r.ig_stories_impressions)}</td>
-      <td>${fmt(r.tt_impressions)}</td>
-      <td>${fmtD(r.ig_reel_cpm)}</td>
-      <td>${fmtD(r.ig_story_cpm)}</td>
-      <td>${fmtD(r.ig_feed_cpm)}</td>
-      <td>${fmtD(r.tt_cpm)}</td>
-      <td style="color:var(--red);font-weight:600">${est ? fmtD(est) : "—"}</td>
+      <td style="white-space:nowrap">${esc(r.platform_format||"")}</td>
+      <td style="white-space:nowrap;font-size:11px">${esc(r.usage||"")}</td>
+      <td>${fC(igFeedCost)}</td>
+      <td>${fC(igReelCost)}</td>
+      <td>${fC(igStoryCost)}</td>
+      <td>${fC(ttCost)}</td>
+      <td style="font-weight:600">${fC(cpmEst)}</td>
+      <td style="color:var(--dim)">${totalImpr ? totalImpr.toLocaleString() : "—"}</td>
+      <td>${fP(orgPct)}</td>
+      <td>${fC(orgD)}</td>
+      <td>${fP(paidPct)}</td>
+      <td>${fC(paidD)}</td>
+      <td style="color:var(--red);font-weight:700">${fC(totalEst)}</td>
       <td>${fmtD(r.first_offer)}</td>
+      <td>${fmtD(r.influencer_offer)}</td>
+      <td>${fmtD(r.a8_counter)}</td>
       <td style="font-weight:600">${fmtD(r.accepted_offer)}</td>
       <td><button class="btn-icon btn-edit-pp" data-idx="${i}" title="Edit details">✏</button></td>
     </tr>`;
-  }).join("") : `<tr><td colspan="16" class="empty-cell">No creators in Paid Plan yet. Check the "Paid Plan" box on a creator in the Master Lists tab.</td></tr>`;
+  }).join("") : `<tr><td colspan="20" class="empty-cell">No creators in Paid Plan yet. Check the "Paid Plan" box on a creator in the Master Lists tab.</td></tr>`;
 
   document.querySelectorAll(".btn-edit-pp").forEach(b =>
     b.addEventListener("click", () => {
@@ -381,6 +401,20 @@ async function loadPaidPlan() {
     })
   );
 }
+
+// Auto-fill defaults across all existing plan records
+document.querySelectorAll(".pp-autofill-btn").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const field = btn.dataset.field;
+    const val   = parseFloat(btn.dataset.val);
+    const toUpdate = ppRows.filter(r => r.id);
+    if (!toUpdate.length) { alert("No saved plan records to update yet."); return; }
+    btn.disabled = true; btn.textContent = "Saving…";
+    await Promise.all(toUpdate.map(r => apiPatch(`/api/paid_plan/${r.id}`, {[field]: val})));
+    btn.disabled = false; btn.textContent = btn.dataset.label;
+    loadPaidPlan();
+  });
+});
 
 ["pp-search","pp-filter-status"].forEach(id => document.getElementById(id)?.addEventListener("input", loadPaidPlan));
 
@@ -397,7 +431,6 @@ async function openPaidPlanModal(row) {
           <option ${e.status==="Locked"?"selected":""}>Locked</option>
         </select>
       </div>
-      <div class="fld"><label>Campaign</label><input id="ppf-campaign" value="${esc(e.campaign||"")}"></div>
       <div class="fld"><label>Platform / Format</label>
         <select id="ppf-format">
           <option value="">—</option>
@@ -458,7 +491,6 @@ async function openPaidPlanModal(row) {
     const payload = {
       influencer_id:          e.influencer_id,
       status:                 $("ppf-status").value,
-      campaign:               $("ppf-campaign").value.trim(),
       platform_format:        $("ppf-format").value,
       usage:                  $("ppf-usage").value,
       exclusivity:            $("ppf-excl").value.trim(),

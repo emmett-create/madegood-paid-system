@@ -139,29 +139,51 @@
             </select>
           </div>
         </div>
+        <!-- Auto-fill defaults strip -->
+        <div class="calc-strip" style="margin-bottom:14px;flex-wrap:wrap;gap:8px">
+          <span class="calc-label" style="white-space:nowrap">Auto-fill column</span>
+          <button class="view-btn pp-autofill-btn" data-field="ig_feed_cpm"  data-val="29.00" data-label="IG Feed CPM ($29)">IG Feed CPM ($29)</button>
+          <button class="view-btn pp-autofill-btn" data-field="ig_reel_cpm"  data-val="29.50" data-label="IG Reel CPM ($29.50)">IG Reel CPM ($29.50)</button>
+          <button class="view-btn pp-autofill-btn" data-field="ig_story_cpm" data-val="10.50" data-label="IG Story CPM ($10.50)">IG Story CPM ($10.50)</button>
+          <button class="view-btn pp-autofill-btn" data-field="tt_cpm"       data-val="20.00" data-label="TikTok CPM ($20)">TikTok CPM ($20)</button>
+          <button class="view-btn pp-autofill-btn" data-field="organic_pct"  data-val="10"    data-label="Organic % (10)">Organic % (10)</button>
+          <button class="view-btn pp-autofill-btn" data-field="paid_pct"     data-val="30"    data-label="Paid % (30)">Paid % (30)</button>
+        </div>
         <div class="table-wrap">
           <table class="tbl" id="pp-table">
             <thead>
+              <tr>
+                <th colspan="4" style="border-bottom:none"></th>
+                <th colspan="6" style="text-align:center;background:rgba(88,166,255,.08);letter-spacing:.5px">CALCULATED COSTS</th>
+                <th colspan="4" style="text-align:center;background:rgba(192,132,252,.08);letter-spacing:.5px">USAGE RIGHTS</th>
+                <th colspan="1" style="text-align:center;background:rgba(63,185,80,.08);letter-spacing:.5px">TOTAL</th>
+                <th colspan="4" style="text-align:center;background:rgba(210,153,34,.08);letter-spacing:.5px">NEGOTIATIONS</th>
+                <th style="border-bottom:none"></th>
+              </tr>
               <tr>
                 <th>Status</th>
                 <th>Name</th>
                 <th>Platform/Format</th>
                 <th>Usage</th>
-                <th>Exclusivity</th>
-                <th>IG Reels Avg</th>
-                <th>IG Stories Avg</th>
-                <th>TT Avg</th>
-                <th>IG Reel CPM</th>
-                <th>IG Story CPM</th>
-                <th>IG Feed CPM</th>
-                <th>TT CPM</th>
-                <th>Est. Cost</th>
-                <th>First Offer</th>
-                <th>Accepted Offer</th>
+                <th style="background:rgba(88,166,255,.05)">IG Feed Cost</th>
+                <th style="background:rgba(88,166,255,.05)">IG Reel Cost</th>
+                <th style="background:rgba(88,166,255,.05)">IG Story Cost</th>
+                <th style="background:rgba(88,166,255,.05)">TT Cost</th>
+                <th style="background:rgba(88,166,255,.05)">CPM Est.</th>
+                <th style="background:rgba(88,166,255,.05)">Total Impr.</th>
+                <th style="background:rgba(192,132,252,.05)">Organic %</th>
+                <th style="background:rgba(192,132,252,.05)">Organic $</th>
+                <th style="background:rgba(192,132,252,.05)">Paid %</th>
+                <th style="background:rgba(192,132,252,.05)">Paid $</th>
+                <th style="background:rgba(63,185,80,.05)">Total Est. Cost</th>
+                <th style="background:rgba(210,153,34,.05)">First Offer</th>
+                <th style="background:rgba(210,153,34,.05)">Influencer Offer</th>
+                <th style="background:rgba(210,153,34,.05)">A8 Counter</th>
+                <th style="background:rgba(210,153,34,.05)">Accepted Offer</th>
                 <th></th>
               </tr>
             </thead>
-            <tbody id="pp-body"><tr><td colspan="16" class="empty-cell">Loading…</td></tr></tbody>
+            <tbody id="pp-body"><tr><td colspan="20" class="empty-cell">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
