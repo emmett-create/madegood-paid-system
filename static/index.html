@@ -386,11 +386,11 @@
   </div><!-- /app -->
 
   <!-- Modals rendered by JS -->
-  <div id="modal-overlay" class="modal-overlay hidden">
+  <div id="modal-overlay" class="modal-overlay hidden" onclick="if(event.target===this)document.getElementById('modal-overlay').classList.add('hidden')">
     <div class="modal" id="modal-box">
       <div class="modal-hdr">
         <h3 id="modal-title">Add</h3>
-        <button class="modal-x" id="modal-close">✕</button>
+        <button class="modal-x" id="modal-close" onclick="document.getElementById('modal-overlay').classList.add('hidden')">✕</button>
       </div>
       <div id="modal-body"></div>
     </div>
