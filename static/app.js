@@ -355,26 +355,45 @@ async function loadPaidPlan() {
   if (search) rows = rows.filter(r => (r.influencer?.name||"").toLowerCase().includes(search));
   if (status) rows = rows.filter(r => r.status === status);
 
-  const fC = v => v > 0 ? `<span style="color:var(--text)">$${Math.round(v).toLocaleString()}</span>` : `<span style="color:var(--dim)">—</span>`;
-  const fP = v => v != null ? `${v}%` : "—";
+  const fC = v => v > 0 ? `<span>$${Math.round(v).toLocaleString()}</span>` : `<span style="color:var(--dim)">—</span>`;
+  const fP = v => (v != null && v !== "") ? `${v}%` : "—";
+  const del1 = v => v ? `<span style="color:var(--text);font-weight:600">1</span>` : `<span style="color:var(--dim)">—</span>`;
 
   $("pp-body").innerHTML = rows.length ? rows.map((r, i) => {
+    const inf = r.influencer || {};
+    const fmt_ = r.platform_format || "";
+    const hasIGFeed  = fmt_.includes("In-Feed");
+    const hasIGReel  = fmt_.includes("Reel");
+    const hasIGStory = fmt_.includes("Story");
+    const hasTT      = fmt_.includes("TikTok");
+
     const igFeedCost  = ((r.ig_reels_impressions||0)  * (r.ig_feed_cpm||0))  / 1000;
     const igReelCost  = ((r.ig_reels_impressions||0)  * (r.ig_reel_cpm||0))  / 1000;
     const igStoryCost = ((r.ig_stories_impressions||0) * (r.ig_story_cpm||0)) / 1000;
     const ttCost      = ((r.tt_impressions||0)         * (r.tt_cpm||0))       / 1000;
     const cpmEst      = igFeedCost + igReelCost + igStoryCost + ttCost;
     const totalImpr   = (r.ig_reels_impressions||0) + (r.ig_stories_impressions||0) + (r.tt_impressions||0);
-    const orgPct      = r.organic_pct ?? 10;
-    const paidPct     = r.paid_pct ?? 30;
-    const orgD        = cpmEst * orgPct / 100;
+    const orgPct      = r.organic_pct != null ? r.organic_pct : 10;
+    const paidPct     = r.paid_pct    != null ? r.paid_pct    : 30;
+    const orgD        = cpmEst * orgPct  / 100;
     const paidD       = cpmEst * paidPct / 100;
     const totalEst    = cpmEst + orgD + paidD;
     return `<tr>
       <td>${r.status ? `<span class="badge ${STATUS_BADGE[r.status]||""}">${esc(r.status)}</span>` : `<span style="color:var(--dim);font-size:11px">—</span>`}</td>
-      <td><strong>${esc(r.influencer?.name||"Unknown")}</strong></td>
-      <td style="white-space:nowrap">${esc(r.platform_format||"")}</td>
-      <td style="white-space:nowrap;font-size:11px">${esc(r.usage||"")}</td>
+      <td style="white-space:nowrap"><strong>${esc(inf.name||"Unknown")}</strong></td>
+      <td style="white-space:nowrap;font-size:11px">${esc(fmt_||"")}</td>
+      <td>${inf.ig_handle ? `<a href="${esc(inf.ig_url||`https://instagram.com/${inf.ig_handle}`)}" target="_blank" style="color:var(--red)">@${esc(inf.ig_handle)}</a>` : "—"}</td>
+      <td style="color:var(--dim)">${(r.ig_reels_impressions||0).toLocaleString() || "—"}</td>
+      <td>${inf.tt_handle ? `<a href="${esc(inf.tt_url||`https://tiktok.com/@${inf.tt_handle}`)}" target="_blank" style="color:var(--red)">@${esc(inf.tt_handle)}</a>` : "—"}</td>
+      <td style="color:var(--dim)">${(r.tt_impressions||0).toLocaleString() || "—"}</td>
+      <td style="text-align:center">${del1(hasIGFeed)}</td>
+      <td style="text-align:center">${del1(hasIGReel)}</td>
+      <td style="text-align:center">${del1(hasIGStory)}</td>
+      <td style="text-align:center">${del1(hasTT)}</td>
+      <td style="color:var(--yellow)">${r.ig_feed_cpm ? `$${r.ig_feed_cpm}` : "—"}</td>
+      <td style="color:var(--yellow)">${r.ig_reel_cpm ? `$${r.ig_reel_cpm}` : "—"}</td>
+      <td style="color:var(--yellow)">${r.ig_story_cpm ? `$${r.ig_story_cpm}` : "—"}</td>
+      <td style="color:var(--yellow)">${r.tt_cpm ? `$${r.tt_cpm}` : "—"}</td>
       <td>${fC(igFeedCost)}</td>
       <td>${fC(igReelCost)}</td>
       <td>${fC(igStoryCost)}</td>
@@ -390,14 +409,24 @@ async function loadPaidPlan() {
       <td>${fmtD(r.influencer_offer)}</td>
       <td>${fmtD(r.a8_counter)}</td>
       <td style="font-weight:600">${fmtD(r.accepted_offer)}</td>
-      <td><button class="btn-icon btn-edit-pp" data-idx="${i}" title="Edit details">✏</button></td>
+      <td style="white-space:nowrap">
+        <button class="btn-icon btn-edit-pp" data-idx="${i}" title="Edit">✏</button>
+        ${r.id ? `<button class="btn-icon btn-del-pp" data-id="${r.id}" title="Clear plan data" style="color:#666">✕</button>` : ""}
+      </td>
     </tr>`;
-  }).join("") : `<tr><td colspan="20" class="empty-cell">No creators in Paid Plan yet. Check the "Paid Plan" box on a creator in the Master Lists tab.</td></tr>`;
+  }).join("") : `<tr><td colspan="30" class="empty-cell">No creators in Paid Plan yet. Check the "Paid Plan" box on a creator in the Master Lists tab.</td></tr>`;
 
   document.querySelectorAll(".btn-edit-pp").forEach(b =>
     b.addEventListener("click", () => {
       const row = rows[parseInt(b.dataset.idx)];
       if (row) openPaidPlanModal(row);
+    })
+  );
+  document.querySelectorAll(".btn-del-pp").forEach(b =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Clear all plan data for this creator? They will stay in the Paid Plan list but their rates and offers will be erased.")) return;
+      await fetch(`/api/paid_plan/${b.dataset.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+      loadPaidPlan();
     })
   );
 }
@@ -420,7 +449,8 @@ document.querySelectorAll(".pp-autofill-btn").forEach(btn => {
 
 async function openPaidPlanModal(row) {
   const e = row;
-  const planId = e.id; // null = no DB record yet → will POST; set = will PATCH
+  const planId = e.id;
+  const d = (v, def) => (v != null && v !== "") ? v : def; // default helper
   openModal(`Plan Details — ${esc(e.influencer?.name||"")}`, `
     <div class="form-grid-2">
       <div class="fld"><label>Status</label>
@@ -460,15 +490,15 @@ async function openPaidPlanModal(row) {
     </div>
     <div class="form-section">CPM Rates (benchmark defaults pre-filled)</div>
     <div class="form-grid-3">
-      <div class="fld"><label>IG Reel CPM ($)</label><input type="number" step="0.01" id="ppf-reel-cpm" value="${e.ig_reel_cpm ?? 29.50}"></div>
-      <div class="fld"><label>IG Story CPM ($)</label><input type="number" step="0.01" id="ppf-story-cpm" value="${e.ig_story_cpm ?? 10.50}"></div>
-      <div class="fld"><label>IG In-Feed CPM ($)</label><input type="number" step="0.01" id="ppf-feed-cpm" value="${e.ig_feed_cpm ?? 29.00}"></div>
-      <div class="fld"><label>TT CPM ($)</label><input type="number" step="0.01" id="ppf-tt-cpm" value="${e.tt_cpm ?? 20.00}"></div>
+      <div class="fld"><label>IG Reel CPM ($)</label><input type="number" step="0.01" id="ppf-reel-cpm" value="${d(e.ig_reel_cpm, 29.50)}"></div>
+      <div class="fld"><label>IG Story CPM ($)</label><input type="number" step="0.01" id="ppf-story-cpm" value="${d(e.ig_story_cpm, 10.50)}"></div>
+      <div class="fld"><label>IG In-Feed CPM ($)</label><input type="number" step="0.01" id="ppf-feed-cpm" value="${d(e.ig_feed_cpm, 29.00)}"></div>
+      <div class="fld"><label>TT CPM ($)</label><input type="number" step="0.01" id="ppf-tt-cpm" value="${d(e.tt_cpm, 20.00)}"></div>
     </div>
     <div class="form-section">Usage Rights + Negotiation</div>
     <div class="form-grid-3">
-      <div class="fld"><label>Organic Usage %</label><input type="number" step="0.1" id="ppf-org-pct" value="${e.organic_pct ?? 10}"></div>
-      <div class="fld"><label>Paid Usage %</label><input type="number" step="0.1" id="ppf-paid-pct" value="${e.paid_pct ?? 30}"></div>
+      <div class="fld"><label>Organic Usage %</label><input type="number" step="0.1" id="ppf-org-pct" value="${d(e.organic_pct, 10)}"></div>
+      <div class="fld"><label>Paid Usage %</label><input type="number" step="0.1" id="ppf-paid-pct" value="${d(e.paid_pct, 30)}"></div>
       <div class="fld"><label>First Offer ($)</label><input type="number" id="ppf-first" value="${e.first_offer||""}"></div>
       <div class="fld"><label>Influencer Ask ($)</label><input type="number" id="ppf-inf-offer" value="${e.influencer_offer||""}"></div>
       <div class="fld"><label>A8 Counter ($)</label><input type="number" id="ppf-a8c" value="${e.a8_counter||""}"></div>
@@ -999,13 +1029,15 @@ function openModal(title, bodyHtml, onSubmit) {
     </div>`;
   $("modal-overlay").classList.remove("hidden");
   modalSubmitFn = onSubmit;
-  $("modal-cancel").addEventListener("click", closeModal);
-  $("modal-submit").addEventListener("click", async () => {
+  // Use onclick (not addEventListener) to prevent stacking handlers across modal opens
+  $("modal-close").onclick  = closeModal;
+  $("modal-cancel").onclick = closeModal;
+  $("modal-submit").onclick = async () => {
     const btn = $("modal-submit");
     btn.disabled = true; btn.textContent = "Saving…";
     try { await modalSubmitFn(); }
-    catch(e) { alert("Error: " + e.message); btn.disabled=false; btn.textContent="Save"; }
-  });
+    catch(err) { alert("Error: " + err.message); btn.disabled=false; btn.textContent="Save"; }
+  };
 }
 
 function closeModal() {
@@ -1013,5 +1045,5 @@ function closeModal() {
   modalSubmitFn = null;
 }
 
-$("modal-close").addEventListener("click", closeModal);
+// Clicking outside the modal box also closes it
 $("modal-overlay").addEventListener("click", e => { if(e.target.id==="modal-overlay") closeModal(); });

@@ -146,7 +146,13 @@ async def add_influencer(req: InfluencerIn):
 @app.patch("/api/influencers/{id}")
 async def update_influencer(id: int, req: dict):
     check_auth(req.pop("password", None))
-    return await sb_patch("paid_influencers", id, req)
+    result = await sb_patch("paid_influencers", id, req)
+    # When removing from paid plan, cascade-delete the plan record
+    if req.get("in_paid_plan") is False:
+        plans = await sb_get("paid_plan", f"?influencer_id=eq.{id}")
+        for p in plans:
+            await sb_delete("paid_plan", p["id"])
+    return result
 
 @app.delete("/api/influencers/{id}")
 async def delete_influencer(id: int, password: str = ""):
@@ -175,9 +181,12 @@ async def get_paid_plan():
             "influencer_id": inf["id"],
             "influencer": {
                 "id": inf["id"], "name": inf["name"],
-                "ig_handle": inf["ig_handle"],
-                "ig_followers": inf["ig_followers"],
-                "tt_followers": inf["tt_followers"],
+                "ig_handle": inf.get("ig_handle"),
+                "ig_url": inf.get("ig_url"),
+                "tt_handle": inf.get("tt_handle"),
+                "tt_url": inf.get("tt_url"),
+                "ig_followers": inf.get("ig_followers"),
+                "tt_followers": inf.get("tt_followers"),
             },
             "status": p.get("status"),
             "campaign": p.get("campaign"),
