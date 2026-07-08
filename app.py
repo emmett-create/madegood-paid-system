@@ -130,6 +130,9 @@ class InfluencerIn(BaseModel):
     campaign: Optional[str] = None
     review_notes: Optional[str] = None
     location_country: Optional[str] = None
+    int_status: Optional[str] = None
+    client_approved: Optional[bool] = None
+    client_notes: Optional[str] = None
     in_paid_plan: Optional[bool] = False
 
 @app.get("/api/influencers")

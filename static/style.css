@@ -148,6 +148,12 @@ input::placeholder { color: var(--dim); }
 a { color: var(--red); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
+/* ── INT/EXT column visibility ── */
+#ml-table.ml-int .ext-col { display: none; }
+#ml-table.ml-ext .int-col { display: none; }
+.ml-rejected td { background: rgba(202,1,0,.08) !important; }
+.badge-rejected { background: #2d1a00; color: #f59e0b; }
+
 /* ── View toggle buttons ── */
 .view-btn { background: var(--panel2); border: 1px solid var(--border); color: var(--dim); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
 .view-btn.active { background: var(--panel); color: var(--text); border-color: var(--red); }

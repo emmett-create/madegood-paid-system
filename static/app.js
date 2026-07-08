@@ -119,6 +119,10 @@ async function loadMasterList() {
     return 0;
   });
 
+  // Set INT/EXT class on table for column visibility
+  const mlTable = $("ml-table");
+  if (mlTable) { mlTable.className = `tbl ml-${currentListType.toLowerCase()}`; }
+
   // Update sort icons
   document.querySelectorAll(".ml-sort .sort-icon").forEach(el => el.textContent = "");
   const activeSort = document.querySelector(`.ml-sort[data-col="${mlSortCol}"] .sort-icon`);
@@ -144,13 +148,20 @@ async function loadMasterList() {
     <td>${esc(r.campaign || "")}</td>
     <td>${esc(r.email || "")}</td>
     <td><input class="ml-notes-inp" data-id="${r.id}" value="${esc(r.review_notes||"")}" placeholder="Notes…" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 7px;font-size:11px;width:140px"></td>
-    <td style="text-align:center">${inExt ? `<span style="color:var(--green);font-weight:700;font-size:14px">✓</span>` : ""}</td>
+    <td class="int-col" style="text-align:center">${inExt ? `<span style="color:var(--green);font-weight:700;font-size:14px">✓</span>` : ""}</td>
+    <td class="ext-col" style="text-align:center">
+      ${currentListType==="EXT" ? `<input type="checkbox" class="ml-client-approved" data-id="${r.id}" ${r.client_approved?"checked":""} style="accent-color:var(--green);width:16px;height:16px;cursor:pointer">` : ""}
+    </td>
+    <td class="ext-col">
+      ${currentListType==="EXT" ? `<input class="ml-client-notes" data-id="${r.id}" value="${esc(r.client_notes||"")}" placeholder="Client notes…" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 7px;font-size:11px;width:160px">` : ""}
+    </td>
     <td>
       <button class="btn-icon btn-edit-inf" data-id="${r.id}" title="Edit">✏</button>
       ${currentListType==="INT" ? `<button class="btn-icon btn-copy-ext" data-id="${r.id}" title="Add to External list" style="font-size:10px;letter-spacing:.3px">${inExt ? `<span style="color:var(--green)">✓EXT</span>` : "→EXT"}</button>` : ""}
+      ${currentListType==="INT" ? `<button class="btn-icon btn-reject-inf" data-id="${r.id}" style="color:var(--red);font-size:11px" title="Reject">${r.int_status==="rejected"?"✕ Rejected":"Reject"}</button>` : ""}
       <button class="btn-icon btn-del-inf" data-id="${r.id}" title="Delete">✕</button>
     </td>
-  </tr>`;}).join("") : `<tr><td colspan="15" class="empty-cell">No creators yet. Click + Add Creator.</td></tr>`;
+  </tr>`;}).join("") : `<tr><td colspan="16" class="empty-cell">No creators yet. Click + Add Creator.</td></tr>`;
 
   // Paid plan checkboxes
   document.querySelectorAll(".paid-plan-chk").forEach(cb => {
@@ -172,10 +183,50 @@ async function loadMasterList() {
       loadMasterList();
     })
   );
+  // Mark already-rejected rows red on load
+  rows.forEach(r => {
+    if (r.int_status === "rejected") {
+      document.querySelectorAll(`.btn-reject-inf[data-id="${r.id}"]`).forEach(b =>
+        b.closest("tr")?.classList.add("ml-rejected")
+      );
+    }
+  });
+
   // Inline notes save
   document.querySelectorAll(".ml-notes-inp").forEach(inp =>
     inp.addEventListener("blur", () =>
       apiPatch(`/api/influencers/${inp.dataset.id}`, {review_notes: inp.value.trim() || null})
+    )
+  );
+
+  // Reject button
+  document.querySelectorAll(".btn-reject-inf").forEach(b =>
+    b.addEventListener("click", async () => {
+      const row = rows.find(r => String(r.id) === b.dataset.id);
+      if (!row) return;
+      const isRejected = row.int_status === "rejected";
+      const newStatus = isRejected ? null : "rejected";
+      await apiPatch(`/api/influencers/${b.dataset.id}`, {int_status: newStatus});
+      row.int_status = newStatus;
+      b.textContent = newStatus ? "✕ Rejected" : "Reject";
+      b.closest("tr")?.classList.toggle("ml-rejected", !!newStatus);
+    })
+  );
+
+  // EXT: client approved checkbox → also sets in_paid_plan
+  document.querySelectorAll(".ml-client-approved").forEach(cb =>
+    cb.addEventListener("change", async () => {
+      await apiPatch(`/api/influencers/${cb.dataset.id}`, {
+        client_approved: cb.checked,
+        in_paid_plan:    cb.checked ? true : undefined,
+      });
+    })
+  );
+
+  // EXT: client notes save on blur
+  document.querySelectorAll(".ml-client-notes").forEach(inp =>
+    inp.addEventListener("blur", () =>
+      apiPatch(`/api/influencers/${inp.dataset.id}`, {client_notes: inp.value.trim() || null})
     )
   );
 
@@ -315,7 +366,7 @@ function openInfluencerModal(existing) {
     </div>
     <div class="fld"><label>Campaign</label><input id="mf-campaign" value="${esc(e.campaign||"")}"></div>
     <div class="fld"><label>Audience Age Breakdown</label><input id="mf-age" value="${esc(e.audience_age||"")}"></div>
-    <div class="fld"><label>ShopMy Conversion Data</label><input id="mf-shopmy" value="${esc(e.shopmy_data||"")}"></div>
+    <div class="fld"><label>ShopMy Conversion Data</label><input id="mf-shopmy" value="${esc(e.shopmy_data||"")}" placeholder="Average $ per Month" style="background:var(--panel);"></div>
     <div class="fld"><label>Notes</label><textarea id="mf-ext-feedback" rows="2">${esc(e.external_feedback||"")}</textarea></div>
   `, async () => {
     const igHandle  = $("mf-ig-handle").value.trim().replace(/^@/,"");
