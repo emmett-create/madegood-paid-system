@@ -741,6 +741,21 @@ async function openPaidPlanModal(row) {
     };
     if (planId) await apiPatch(`/api/paid_plan/${planId}`, payload);
     else await apiPost("/api/paid_plan", payload);
+
+    // When status set to Locked → auto-create Content Review entry if none exists
+    if (payload.status === "Locked") {
+      try {
+        const existing = await apiGet("/api/content_review");
+        const hasEntry = existing.some(r => r.influencer_id === e.influencer_id);
+        if (!hasEntry) {
+          await apiPost("/api/content_review", {
+            influencer_id:    e.influencer_id,
+            deliverable_type: ppDeliverableSummary(payload) || null,
+          });
+        }
+      } catch(err) { console.error("Could not auto-create Content Review:", err); }
+    }
+
     closeModal(); loadPaidPlan();
   });
 
