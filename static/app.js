@@ -572,7 +572,7 @@ async function loadPaidPlan() {
     const totalEst    = cpmEst + orgD + paidD;
     return `<tr>
       <td>
-        <select class="pp-status-sel" data-id="${r.id || ""}" data-idx="${i}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;font-size:11px;font-weight:600;${r.status==="Locked"?"color:var(--green)":r.status==="Offer Out"?"color:var(--blue)":r.status==="In Negotiations"?"color:var(--yellow)":"color:var(--dim)"}">
+        <select class="pp-status-sel" data-id="${r.id || ""}" data-idx="${i}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;font-size:11px;font-weight:600;min-width:150px;${r.status==="Locked"?"color:var(--green)":r.status==="Offer Out"?"color:var(--blue)":r.status==="In Negotiations"?"color:var(--yellow)":"color:var(--dim)"}">
           <option value="">—</option>
           <option ${r.status==="In Negotiations"?"selected":""}>In Negotiations</option>
           <option ${r.status==="Offer Out"?"selected":""}>Offer Out</option>
