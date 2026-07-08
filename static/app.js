@@ -571,7 +571,14 @@ async function loadPaidPlan() {
     const paidD       = cpmEst * paidPct / 100;
     const totalEst    = cpmEst + orgD + paidD;
     return `<tr>
-      <td>${r.status ? `<span class="badge ${STATUS_BADGE[r.status]||""}">${esc(r.status)}</span>` : `<span style="color:var(--dim);font-size:11px">—</span>`}</td>
+      <td>
+        <select class="pp-status-sel" data-id="${r.id || ""}" data-idx="${i}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;font-size:11px;font-weight:600;${r.status==="Locked"?"color:var(--green)":r.status==="Offer Out"?"color:var(--blue)":r.status==="In Negotiations"?"color:var(--yellow)":"color:var(--dim)"}">
+          <option value="">—</option>
+          <option ${r.status==="In Negotiations"?"selected":""}>In Negotiations</option>
+          <option ${r.status==="Offer Out"?"selected":""}>Offer Out</option>
+          <option ${r.status==="Locked"?"selected":""}>Locked</option>
+        </select>
+      </td>
       <td style="white-space:nowrap"><strong>${esc(inf.name||"Unknown")}</strong></td>
       <td style="white-space:nowrap;font-size:11px">${esc(fmt_||"")}</td>
       <td>${inf.ig_handle ? `<a href="${esc(inf.ig_url||`https://instagram.com/${inf.ig_handle}`)}" target="_blank" style="color:var(--red)">@${esc(inf.ig_handle)}</a>` : "—"}</td>
@@ -613,6 +620,33 @@ async function loadPaidPlan() {
     b.addEventListener("click", () => {
       const row = rows[parseInt(b.dataset.idx)];
       if (row) openPaidPlanModal(row);
+    })
+  );
+
+  // Inline status dropdown save
+  document.querySelectorAll(".pp-status-sel").forEach(sel =>
+    sel.addEventListener("change", async () => {
+      const row = rows[parseInt(sel.dataset.idx)];
+      if (!row) return;
+      const newStatus = sel.value;
+      // Color the select based on new status
+      sel.style.color = newStatus==="Locked" ? "var(--green)" : newStatus==="Offer Out" ? "var(--blue)" : newStatus==="In Negotiations" ? "var(--yellow)" : "var(--dim)";
+      if (row.id) {
+        await apiPatch(`/api/paid_plan/${row.id}`, {status: newStatus});
+      } else {
+        const newPlan = await apiPost("/api/paid_plan", {influencer_id: row.influencer_id, status: newStatus});
+        if (newPlan?.id) row.id = newPlan.id;
+      }
+      // If set to Locked, trigger Content Review auto-create
+      if (newStatus === "Locked") {
+        const existing = await apiGet("/api/content_review").catch(()=>[]);
+        if (!existing.some(r => r.influencer_id === row.influencer_id)) {
+          await apiPost("/api/content_review", {
+            influencer_id:    row.influencer_id,
+            deliverable_type: ppDeliverableSummary(row) || null,
+          });
+        }
+      }
     })
   );
   document.querySelectorAll(".btn-del-pp").forEach(b =>
@@ -664,15 +698,6 @@ async function openPaidPlanModal(row) {
           <option ${e.status==="Locked"?"selected":""}>Locked</option>
         </select>
       </div>
-      <div class="fld"><label>Usage</label>
-        <select id="ppf-usage">
-          <option value="">—</option>
-          <option ${e.usage==="Organic (30 days)"?"selected":""}>Organic (30 days)</option>
-          <option ${e.usage==="Baked in Paid (30 days)"?"selected":""}>Baked in Paid (30 days)</option>
-          <option ${e.usage==="Pre-Negotiated Paid (30 days)"?"selected":""}>Pre-Negotiated Paid (30 days)</option>
-          <option ${e.usage==="Other"?"selected":""}>Other</option>
-        </select>
-      </div>
     </div>
     <div class="form-section">Impressions</div>
     <div class="form-grid-2">
@@ -685,6 +710,18 @@ async function openPaidPlanModal(row) {
       <div class="fld"><label>IG Reels</label><input type="number" id="ppf-reel-qty" value="${d(e.ig_reel_qty,0)}" min="0"></div>
       <div class="fld"><label>IG Stories</label><input type="number" id="ppf-story-qty" value="${d(e.ig_story_qty,0)}" min="0"></div>
       <div class="fld"><label>TikTok Videos</label><input type="number" id="ppf-tt-qty" value="${d(e.tt_qty,0)}" min="0"></div>
+    </div>
+    <div class="form-section">Usage</div>
+    <div class="form-grid-2">
+      <div class="fld"><label>Usage Rights</label>
+        <select id="ppf-usage">
+          <option value="">—</option>
+          <option ${e.usage==="Organic (30 days)"?"selected":""}>Organic (30 days)</option>
+          <option ${e.usage==="Baked in Paid (30 days)"?"selected":""}>Baked in Paid (30 days)</option>
+          <option ${e.usage==="Pre-Negotiated Paid (30 days)"?"selected":""}>Pre-Negotiated Paid (30 days)</option>
+          <option ${e.usage==="Other"?"selected":""}>Other</option>
+        </select>
+      </div>
     </div>
     <div class="form-section">CPM Rates (benchmark defaults pre-filled)</div>
     <div class="form-grid-3">
