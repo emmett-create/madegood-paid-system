@@ -129,6 +129,7 @@ class InfluencerIn(BaseModel):
     external_feedback: Optional[str] = None
     campaign: Optional[str] = None
     review_notes: Optional[str] = None
+    location_country: Optional[str] = None
     in_paid_plan: Optional[bool] = False
 
 @app.get("/api/influencers")

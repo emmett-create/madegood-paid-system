@@ -86,7 +86,11 @@ let mlSortCol = "name", mlSortDir = "asc";
 
 async function loadMasterList() {
   allInfluencers = [];  // reset cache
-  const data = await apiGet(`/api/influencers?list_type=${currentListType}`);
+  const [data, extData] = await Promise.all([
+    apiGet(`/api/influencers?list_type=${currentListType}`),
+    currentListType === "INT" ? apiGet("/api/influencers?list_type=EXT") : Promise.resolve([]),
+  ]);
+  const extHandles = new Set((extData || []).map(r => (r.ig_handle || "").toLowerCase()).filter(Boolean));
   const search   = $("ml-search")?.value.toLowerCase() || "";
   const tier     = $("ml-filter-tier")?.value || "";
   const gender   = $("ml-filter-gender")?.value || "";
@@ -123,7 +127,10 @@ async function loadMasterList() {
   const inPaid = rows.filter(r => r.in_paid_plan).length;
   $("ml-summary").innerHTML = `<span><strong>${rows.length}</strong> creators</span><span><strong>${inPaid}</strong> in paid plan</span>`;
 
-  $("ml-body").innerHTML = rows.length ? rows.map(r => `<tr>
+  $("ml-body").innerHTML = rows.length ? rows.map(r => {
+    const inExt = currentListType === "INT" && r.ig_handle && extHandles.has(r.ig_handle.toLowerCase());
+    const locDisplay = [r.location, r.location_country].filter(Boolean).join(", ");
+    return `<tr>
     <td><input type="checkbox" class="paid-plan-chk" data-id="${r.id}" ${r.in_paid_plan ? "checked" : ""}></td>
     <td>${esc(r.name || "")}</td>
     <td>${r.ig_handle ? `<a href="${esc(r.ig_url||`https://instagram.com/${r.ig_handle}`)}" target="_blank">@${esc(r.ig_handle)}</a>` : "—"}</td>
@@ -132,17 +139,18 @@ async function loadMasterList() {
     <td>${fmt(r.tt_followers)}</td>
     <td>${r.tier ? `<span class="badge badge-int">${esc(r.tier)}</span>` : "—"}</td>
     <td>${esc(r.vertical || "")}</td>
-    <td>${esc(r.location || "")}</td>
+    <td>${esc(locDisplay)}</td>
     <td>${esc(r.gender || "")}</td>
     <td>${esc(r.campaign || "")}</td>
     <td>${esc(r.email || "")}</td>
     <td><input class="ml-notes-inp" data-id="${r.id}" value="${esc(r.review_notes||"")}" placeholder="Notes…" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 7px;font-size:11px;width:140px"></td>
+    <td style="text-align:center">${inExt ? `<span style="color:var(--green);font-weight:700;font-size:14px">✓</span>` : ""}</td>
     <td>
       <button class="btn-icon btn-edit-inf" data-id="${r.id}" title="Edit">✏</button>
-      ${currentListType==="INT" ? `<button class="btn-icon btn-copy-ext" data-id="${r.id}" title="Add to External list" style="font-size:10px;letter-spacing:.3px">→EXT</button>` : ""}
+      ${currentListType==="INT" ? `<button class="btn-icon btn-copy-ext" data-id="${r.id}" title="Add to External list" style="font-size:10px;letter-spacing:.3px">${inExt ? `<span style="color:var(--green)">✓EXT</span>` : "→EXT"}</button>` : ""}
       <button class="btn-icon btn-del-inf" data-id="${r.id}" title="Delete">✕</button>
     </td>
-  </tr>`).join("") : `<tr><td colspan="14" class="empty-cell">No creators yet. Click + Add Creator.</td></tr>`;
+  </tr>`;}).join("") : `<tr><td colspan="15" class="empty-cell">No creators yet. Click + Add Creator.</td></tr>`;
 
   // Paid plan checkboxes
   document.querySelectorAll(".paid-plan-chk").forEach(cb => {
@@ -177,24 +185,30 @@ async function loadMasterList() {
       if (!row) return;
       if (!confirm(`Add ${row.name || row.ig_handle} to the External list?`)) return;
       await apiPost("/api/influencers", {
-        list_type:    "EXT",
-        name:         row.name,
-        ig_handle:    row.ig_handle,
-        ig_url:       row.ig_url,
-        tt_handle:    row.tt_handle,
-        tt_url:       row.tt_url,
-        ig_followers: row.ig_followers,
-        tt_followers: row.tt_followers,
-        tier:         row.tier,
-        gender:       row.gender,
-        vertical:     row.vertical,
-        archetype:    row.archetype,
-        location:     row.location,
-        email:        row.email,
-        audience_age: row.audience_age,
-        shopmy_data:  row.shopmy_data,
+        list_type:        "EXT",
+        name:             row.name,
+        ig_handle:        row.ig_handle,
+        ig_url:           row.ig_url,
+        tt_handle:        row.tt_handle,
+        tt_url:           row.tt_url,
+        ig_followers:     row.ig_followers,
+        tt_followers:     row.tt_followers,
+        tier:             row.tier,
+        gender:           row.gender,
+        vertical:         row.vertical,
+        archetype:        row.archetype,
+        location:         row.location,
+        location_country: row.location_country,
+        email:            row.email,
+        campaign:         row.campaign,
+        audience_age:     row.audience_age,
+        shopmy_data:      row.shopmy_data,
       });
-      alert(`${row.name || row.ig_handle} added to External list.`);
+      // Instant green feedback — permanent checkmark on reload
+      b.innerHTML = `<span style="color:var(--green)">✓EXT</span>`;
+      b.disabled = true;
+      const inExtCell = b.closest("tr")?.querySelector("td:nth-last-child(2)");
+      if (inExtCell) inExtCell.innerHTML = `<span style="color:var(--green);font-weight:700;font-size:14px">✓</span>`;
     })
   );
 }
@@ -241,11 +255,15 @@ function openInfluencerModal(existing) {
   openModal(isEdit ? "Edit Creator" : "Add Creator", `
     <div class="form-grid-2">
       <div class="fld"><label>Name</label><input id="mf-name" value="${esc(e.name||"")}"></div>
-      <div class="fld"><label>List Type</label>
-        <select id="mf-list-type">
-          <option value="INT" ${currentListType==="INT"?"selected":""}>Internal</option>
-          <option value="EXT" ${currentListType==="EXT"?"selected":""}>External</option>
-        </select>
+      <div class="fld"><label>Add to List</label>
+        <div style="display:flex;gap:20px;margin-top:6px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="checkbox" id="mf-list-int" ${!isEdit && currentListType==="INT" ? "checked" : isEdit && e.list_type==="INT" ? "checked" : ""}> Internal
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="checkbox" id="mf-list-ext" ${!isEdit && currentListType==="EXT" ? "checked" : isEdit && e.list_type==="EXT" ? "checked" : ""}> External
+          </label>
+        </div>
       </div>
     </div>
     <div class="form-section">Social</div>
@@ -271,8 +289,8 @@ function openInfluencerModal(existing) {
           <option ${ (e.vertical||e.archetype)==="Fashion / Lifestyle"?"selected":""}>Fashion / Lifestyle</option>
           <option ${ (e.vertical||e.archetype)==="Cool Guys"?"selected":""}>Cool Guys</option>
           <option ${ (e.vertical||e.archetype)==="Models"?"selected":""}>Models</option>
-          <option ${ (e.vertical||e.archetype)==="Moms/dads"?"selected":""}>Moms/dads</option>
-          <option ${ (e.vertical||e.archetype)==="College"?"selected":""}>College</option>
+          <option ${ (e.vertical||e.archetype)==="Parents"?"selected":""}>Parents</option>
+          <option ${ (e.vertical||e.archetype)==="Student"?"selected":""}>Student</option>
           <option ${ (e.vertical||e.archetype)==="Travel"?"selected":""}>Travel</option>
           <option ${ (e.vertical||e.archetype)==="Creatives"?"selected":""}>Creatives</option>
           <option ${ (e.vertical||e.archetype)==="Food / Bev"?"selected":""}>Food / Bev</option>
@@ -280,7 +298,19 @@ function openInfluencerModal(existing) {
           <option ${ (e.vertical||e.archetype)==="Fitness"?"selected":""}>Fitness</option>
         </select>
       </div>
-      <div class="fld"><label>Location</label><input id="mf-location" value="${esc(e.location||"")}"></div>
+      <div class="fld"><label>Country</label>
+        <select id="mf-country">
+          <option value="">—</option>
+          ${["United States","United Kingdom","Canada","Australia","Mexico","Brazil","France","Germany","Spain","Italy","Netherlands","Sweden","Denmark","Norway","South Korea","Japan","India","Other"].map(c=>`<option ${(e.location_country||""===c)?'selected':''}>${c}</option>`).join("")}
+        </select>
+      </div>
+      <div class="fld" id="mf-state-wrap">
+        <label>State</label>
+        <select id="mf-state">
+          <option value="">—</option>
+          ${["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"].map(s=>`<option ${(e.location||""===s)?'selected':''}>${s}</option>`).join("")}
+        </select>
+      </div>
       <div class="fld"><label>Email</label><input type="email" id="mf-email" value="${esc(e.email||"")}"></div>
     </div>
     <div class="fld"><label>Campaign</label><input id="mf-campaign" value="${esc(e.campaign||"")}"></div>
@@ -288,34 +318,43 @@ function openInfluencerModal(existing) {
     <div class="fld"><label>ShopMy Conversion Data</label><input id="mf-shopmy" value="${esc(e.shopmy_data||"")}"></div>
     <div class="fld"><label>Notes</label><textarea id="mf-ext-feedback" rows="2">${esc(e.external_feedback||"")}</textarea></div>
   `, async () => {
-    const igHandle = $("mf-ig-handle").value.trim().replace(/^@/,"");
-    const ttHandle = $("mf-tt-handle").value.trim().replace(/^@/,"");
+    const igHandle  = $("mf-ig-handle").value.trim().replace(/^@/,"");
+    const ttHandle  = $("mf-tt-handle").value.trim().replace(/^@/,"");
+    const country   = $("mf-country").value;
+    const stateVal  = country === "United States" ? $("mf-state").value : "";
+    const listInt   = $("mf-list-int").checked;
+    const listExt   = $("mf-list-ext").checked;
     const payload = {
-      list_type:    $("mf-list-type").value,
-      name:         $("mf-name").value.trim(),
-      ig_handle:    igHandle,
-      ig_url:       igHandle ? `https://instagram.com/${igHandle}` : "",
-      tt_handle:    ttHandle,
-      tt_url:       ttHandle ? `https://tiktok.com/@${ttHandle}` : "",
-      ig_followers:  parseFloat($("mf-ig-fol").value) || null,
-      tt_followers:  parseFloat($("mf-tt-fol").value) || null,
-      tier:          $("mf-tier").value,
-      gender:        $("mf-gender").value,
-      vertical:      $("mf-vertical").value,
-      archetype:     $("mf-vertical").value,
-      location:      $("mf-location").value.trim(),
-      email:         $("mf-email").value.trim(),
-      campaign:      $("mf-campaign").value.trim(),
-      audience_age:  $("mf-age").value.trim(),
-      shopmy_data:   $("mf-shopmy").value.trim(),
+      name:             $("mf-name").value.trim(),
+      ig_handle:        igHandle,
+      ig_url:           igHandle ? `https://instagram.com/${igHandle}` : "",
+      tt_handle:        ttHandle,
+      tt_url:           ttHandle ? `https://tiktok.com/@${ttHandle}` : "",
+      ig_followers:     parseFloat($("mf-ig-fol").value) || null,
+      tt_followers:     parseFloat($("mf-tt-fol").value) || null,
+      tier:             $("mf-tier").value,
+      gender:           $("mf-gender").value,
+      vertical:         $("mf-vertical").value,
+      archetype:        $("mf-vertical").value,
+      location:         stateVal,
+      location_country: country,
+      email:            $("mf-email").value.trim(),
+      campaign:         $("mf-campaign").value.trim(),
+      audience_age:     $("mf-age").value.trim(),
+      shopmy_data:      $("mf-shopmy").value.trim(),
       external_feedback: $("mf-ext-feedback")?.value.trim() || null,
     };
-    if (isEdit) await apiPatch(`/api/influencers/${existing.id}`, payload);
-    else await apiPost("/api/influencers", payload);
+    if (isEdit) {
+      await apiPatch(`/api/influencers/${existing.id}`, {...payload, list_type: existing.list_type});
+    } else {
+      if (listInt) await apiPost("/api/influencers", {...payload, list_type: "INT"});
+      if (listExt) await apiPost("/api/influencers", {...payload, list_type: "EXT"});
+      if (!listInt && !listExt) await apiPost("/api/influencers", {...payload, list_type: "INT"});
+    }
     closeModal(); loadMasterList();
   });
 
-  // Wire up tier autofill after modal renders — run immediately AND on change
+  // Wire up tier autofill + country/state visibility after modal renders
   setTimeout(() => {
     const updateTier = () => {
       const t = calcTier($("mf-ig-fol")?.value, $("mf-tt-fol")?.value);
@@ -323,7 +362,15 @@ function openInfluencerModal(existing) {
     };
     $("mf-ig-fol")?.addEventListener("input", updateTier);
     $("mf-tt-fol")?.addEventListener("input", updateTier);
-    updateTier(); // auto-fill on open with existing values
+    updateTier();
+
+    const updateStateVis = () => {
+      const isUS = $("mf-country")?.value === "United States";
+      const wrap = $("mf-state-wrap");
+      if (wrap) wrap.style.display = isUS ? "" : "none";
+    };
+    $("mf-country")?.addEventListener("change", updateStateVis);
+    updateStateVis(); // run on open
   }, 0);
 }
 
