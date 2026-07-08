@@ -240,11 +240,30 @@ async def delete_paid_plan(id: int, password: str = ""):
 # ── Outreach (updates on influencer records) ──────────────────────────────────
 @app.get("/api/outreach")
 async def get_outreach():
-    return await sb_get("paid_influencers",
+    rows = await sb_get("paid_influencers",
         f"?client=eq.{config.CLIENT}&order=name.asc"
         f"&select=id,name,ig_handle,ig_url,tt_handle,tt_url,ig_followers,tt_followers,"
-        f"list_type,tier,vertical,archetype,location,gender,email,"
-        f"outreach_status,outreach_owner,outreach_date,last_contact,outreach_notes,in_paid_plan")
+        f"list_type,tier,vertical,archetype,location,location_country,gender,email,"
+        f"int_status,outreach_status,outreach_owner,outreach_date,last_contact,outreach_notes,in_paid_plan")
+    # Deduplicate by ig_handle — merge INT+EXT, exclude rejected-INT-only creators
+    seen = {}
+    for r in rows:
+        key = (r.get("ig_handle") or r.get("name") or str(r["id"]))
+        is_rejected_int = r.get("int_status") == "rejected" and r.get("list_type") == "INT"
+        if key in seen:
+            existing = seen[key]
+            existing_rejected_int = existing.get("int_status") == "rejected" and existing.get("list_type") == "INT"
+            if is_rejected_int:
+                pass  # keep existing EXT record, ignore rejected INT
+            elif existing_rejected_int:
+                seen[key] = r  # replace rejected INT with EXT record
+            else:
+                seen[key]["list_type"] = "INT/EXT"
+        else:
+            if not is_rejected_int:
+                seen[key] = r
+            # rejected INT with no EXT counterpart → excluded from outreach
+    return list(seen.values())
 
 # ── Content Calendar ─────────────────────────────────────────────────────────
 @app.get("/api/content_calendar")

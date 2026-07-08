@@ -128,14 +128,12 @@ async function loadMasterList() {
   const activeSort = document.querySelector(`.ml-sort[data-col="${mlSortCol}"] .sort-icon`);
   if (activeSort) activeSort.textContent = mlSortDir === "asc" ? " ↑" : " ↓";
 
-  const inPaid = rows.filter(r => r.in_paid_plan).length;
-  $("ml-summary").innerHTML = `<span><strong>${rows.length}</strong> creators</span><span><strong>${inPaid}</strong> in paid plan</span>`;
+  $("ml-summary").innerHTML = `<span><strong>${rows.length}</strong> creators</span>`;
 
   $("ml-body").innerHTML = rows.length ? rows.map(r => {
     const inExt = currentListType === "INT" && r.ig_handle && extHandles.has(r.ig_handle.toLowerCase());
     const locDisplay = [r.location, r.location_country].filter(Boolean).join(", ");
     return `<tr>
-    <td><input type="checkbox" class="paid-plan-chk" data-id="${r.id}" ${r.in_paid_plan ? "checked" : ""}></td>
     <td>${esc(r.name || "")}</td>
     <td>${r.ig_handle ? `<a href="${esc(r.ig_url||`https://instagram.com/${r.ig_handle}`)}" target="_blank">@${esc(r.ig_handle)}</a>` : "—"}</td>
     <td>${r.tt_handle ? `<a href="${esc(r.tt_url||`https://tiktok.com/@${r.tt_handle}`)}" target="_blank">@${esc(r.tt_handle)}</a>` : "—"}</td>
@@ -163,12 +161,6 @@ async function loadMasterList() {
     </td>
   </tr>`;}).join("") : `<tr><td colspan="16" class="empty-cell">No creators yet. Click + Add Creator.</td></tr>`;
 
-  // Paid plan checkboxes
-  document.querySelectorAll(".paid-plan-chk").forEach(cb => {
-    cb.addEventListener("change", async () => {
-      await apiPatch(`/api/influencers/${cb.dataset.id}`, {in_paid_plan: cb.checked});
-    });
-  });
   // Edit/delete
   document.querySelectorAll(".btn-edit-inf").forEach(b =>
     b.addEventListener("click", () => {
@@ -447,7 +439,10 @@ async function loadOutreach() {
     <td>${esc(r.vertical||r.archetype||"")}</td>
     <td>${esc(r.location||"")}</td>
     <td>${esc(r.gender||"")}</td>
-    <td><span class="badge ${r.list_type==="INT"?"badge-int":"badge-ext"}">${esc(r.list_type)}</span></td>
+    <td>${r.list_type==="INT/EXT"
+        ? `<span class="badge badge-int">INT</span> <span class="badge badge-ext">EXT</span>`
+        : `<span class="badge ${r.list_type==="INT"?"badge-int":"badge-ext"}">${esc(r.list_type)}</span>`
+      }</td>
     <td>
       <select class="or-status-sel" data-id="${r.id}" style="${iStyle}">
         ${OUTREACH_STATUSES.map(s=>`<option ${r.outreach_status===s?"selected":""}>${s}</option>`).join("")}
