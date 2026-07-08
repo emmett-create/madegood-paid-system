@@ -1043,7 +1043,7 @@ async function loadContentReview() {
   });
 
   const iS = "background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:11px;width:100%";
-  const NCOLS = 16;
+  const NCOLS = 25;
 
   $("cr-body").innerHTML = Object.values(groups).length ? Object.values(groups).map(group => {
     const inf = group.inf;
@@ -1062,9 +1062,10 @@ async function loadContentReview() {
       </td>
     </tr>`;
 
-    // Sub-rows — one per deliverable record
+    // Sub-rows — one per deliverable record (9 empty cells for creator info columns)
     const subRows = group.records.map(r => `<tr>
-      <td style="color:var(--dim);font-size:13px;padding-left:20px;white-space:nowrap">↳</td>
+      <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+      <td style="color:var(--dim);font-size:13px;padding-left:8px;white-space:nowrap">↳</td>
       <td style="white-space:nowrap;font-weight:600;font-size:12px">${esc(r.deliverable_type||"—")}</td>
       <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:110px"></td>
       <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:110px"></td>
