@@ -637,15 +637,10 @@ async function loadPaidPlan() {
         const newPlan = await apiPost("/api/paid_plan", {influencer_id: row.influencer_id, status: newStatus});
         if (newPlan?.id) row.id = newPlan.id;
       }
-      // If set to Locked, trigger Content Review auto-create
+      // If set to Locked, trigger Content Review auto-create per deliverable
       if (newStatus === "Locked") {
-        const existing = await apiGet("/api/content_review").catch(()=>[]);
-        if (!existing.some(r => r.influencer_id === row.influencer_id)) {
-          await apiPost("/api/content_review", {
-            influencer_id:    row.influencer_id,
-            deliverable_type: ppDeliverableSummary(row) || null,
-          });
-        }
+        try { await autoCreateContentReviewEntries(row.influencer_id, row); }
+        catch(err) { console.error("Could not auto-create Content Review:", err); }
       }
     })
   );
@@ -779,18 +774,10 @@ async function openPaidPlanModal(row) {
     if (planId) await apiPatch(`/api/paid_plan/${planId}`, payload);
     else await apiPost("/api/paid_plan", payload);
 
-    // When status set to Locked → auto-create Content Review entry if none exists
+    // When status set to Locked → auto-create separate Content Review entries per deliverable
     if (payload.status === "Locked") {
-      try {
-        const existing = await apiGet("/api/content_review");
-        const hasEntry = existing.some(r => r.influencer_id === e.influencer_id);
-        if (!hasEntry) {
-          await apiPost("/api/content_review", {
-            influencer_id:    e.influencer_id,
-            deliverable_type: ppDeliverableSummary(payload) || null,
-          });
-        }
-      } catch(err) { console.error("Could not auto-create Content Review:", err); }
+      try { await autoCreateContentReviewEntries(e.influencer_id, payload); }
+      catch(err) { console.error("Could not auto-create Content Review:", err); }
     }
 
     closeModal(); loadPaidPlan();
@@ -1020,6 +1007,22 @@ function ppDeliverableSummary(plan) {
 const CR_CAMPAIGNS = ["A8 Paid Influencers", "MadeGood Paid Influencers", "Shipping & PR Mailers"];
 const CR_STATUSES  = ["New! Needs Client Review", "Client Reviewed: Approved", "Client Reviewed: Needs Edits"];
 
+// Helper: auto-create one Content Review entry per deliverable type when Locked
+async function autoCreateContentReviewEntries(influencerId, plan) {
+  const existing = await apiGet("/api/content_review");
+  const existingTypes = existing.filter(r => r.influencer_id === influencerId).map(r => r.deliverable_type);
+  const toCreate = [];
+  if ((plan.ig_reel_qty  || 0) > 0) toCreate.push("Instagram Reel");
+  if ((plan.ig_story_qty || 0) > 0) toCreate.push("Instagram Story (3-5 frames)");
+  if ((plan.ig_feed_qty  || 0) > 0) toCreate.push("Instagram In-Feed (Still)");
+  if ((plan.tt_qty       || 0) > 0) toCreate.push("TikTok");
+  for (const type of toCreate) {
+    if (!existingTypes.includes(type)) {
+      await apiPost("/api/content_review", {influencer_id: influencerId, deliverable_type: type});
+    }
+  }
+}
+
 async function loadContentReview() {
   const data = await apiGet("/api/content_review");
   const filter = $("cr-filter-status")?.value;
@@ -1028,130 +1031,140 @@ async function loadContentReview() {
   if (filter === "approved")     rows = rows.filter(r => r.status === "Client Reviewed: Approved");
   if (filter === "needs_edits")  rows = rows.filter(r => r.status === "Client Reviewed: Needs Edits");
 
-  const iS  = "background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:11px;width:100%";
-  const badgeCR = s => {
-    if (!s) return `<span style="color:var(--dim);font-size:11px">—</span>`;
-    const col = s.includes("Approved") ? "var(--green)" : s.includes("Edits") ? "var(--red)" : "var(--yellow)";
-    return `<span style="color:${col};font-weight:600;font-size:11px;white-space:nowrap">${esc(s)}</span>`;
-  };
+  // Group by influencer_id
+  const groups = {};
+  rows.forEach(r => {
+    const key = r.influencer_id || r.id;
+    if (!groups[key]) groups[key] = {inf: r.influencer || {}, records: [], infId: r.influencer_id};
+    groups[key].records.push(r);
+  });
 
-  $("cr-body").innerHTML = rows.length ? rows.map(r => {
-    const inf = r.influencer || {};
-    return `<tr>
-    <td>
-      <select class="cr-status" data-id="${r.id}" style="${iS};min-width:140px">
-        <option value="">—</option>
-        ${CR_STATUSES.map(s=>`<option ${r.status===s?"selected":""}>${esc(s)}</option>`).join("")}
-      </select>
-    </td>
-    <td style="white-space:nowrap"><strong>${esc(inf.name||"")}</strong></td>
-    <td>${inf.ig_handle ? `<a href="${esc(inf.ig_url||`https://instagram.com/${inf.ig_handle}`)}" target="_blank" style="color:var(--red)">@${esc(inf.ig_handle)}</a>` : "—"}</td>
-    <td>${inf.tt_handle ? `<a href="${esc(inf.tt_url||`https://tiktok.com/@${inf.tt_handle}`)}" target="_blank" style="color:var(--red)">@${esc(inf.tt_handle)}</a>` : "—"}</td>
-    <td style="color:var(--dim)">${inf.ig_followers ? Number(inf.ig_followers).toLocaleString() : "—"}</td>
-    <td style="color:var(--dim)">${inf.tt_followers ? Number(inf.tt_followers).toLocaleString() : "—"}</td>
-    <td>${inf.tier ? `<span class="badge badge-int">${esc(inf.tier)}</span>` : "—"}</td>
-    <td style="font-size:11px;color:var(--dim)">${esc(inf.vertical||inf.archetype||"")}</td>
-    <td>
-      <select class="cr-campaign" data-id="${r.id}" style="${iS};min-width:160px">
-        <option value="">—</option>
-        ${CR_CAMPAIGNS.map(c=>`<option ${r.campaign===c?"selected":""}>${esc(c)}</option>`).join("")}
-      </select>
-    </td>
-    <td><input class="cr-del" data-id="${r.id}" value="${esc(r.deliverable_type||"")}" placeholder="e.g. 1 Reel · 1 TikTok" style="${iS};min-width:160px"></td>
-    <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:120px"></td>
-    <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:120px"></td>
-    <td><input class="cr-concept" data-id="${r.id}" value="${esc(r.concept||"")}" placeholder="Concept" style="${iS};min-width:120px"></td>
-    <td>
-      <div style="display:flex;align-items:center;gap:4px">
-        <input class="cr-cv1" data-id="${r.id}" value="${esc(r.content_v1||"")}" placeholder="Link…" style="${iS};min-width:80px">
-        ${r.content_v1 ? `<a href="${esc(r.content_v1)}" target="_blank" style="color:var(--red);font-size:12px;flex-shrink:0">↗</a>` : ""}
-      </div>
-    </td>
-    <td><input class="cr-cap1" data-id="${r.id}" value="${esc(r.caption_v1||"")}" placeholder="Caption" style="${iS};min-width:100px"></td>
-    <td><input class="cr-af1" data-id="${r.id}" value="${esc(r.a8_feedback_v1||"")}" placeholder="A8 notes" style="${iS};min-width:100px"></td>
-    <td style="background:rgba(202,1,0,.06)"><input class="cr-cf1" data-id="${r.id}" value="${esc(r.client_feedback_v1||"")}" placeholder="Client feedback" style="${iS};min-width:120px"></td>
-    <td>
-      <div style="display:flex;align-items:center;gap:4px">
-        <input class="cr-cv2" data-id="${r.id}" value="${esc(r.content_v2||"")}" placeholder="Link…" style="${iS};min-width:80px">
-        ${r.content_v2 ? `<a href="${esc(r.content_v2)}" target="_blank" style="color:var(--red);font-size:12px;flex-shrink:0">↗</a>` : ""}
-      </div>
-    </td>
-    <td><input class="cr-cap2" data-id="${r.id}" value="${esc(r.caption_v2||"")}" placeholder="Caption" style="${iS};min-width:100px"></td>
-    <td><input class="cr-af2" data-id="${r.id}" value="${esc(r.a8_feedback_v2||"")}" placeholder="A8 notes" style="${iS};min-width:100px"></td>
-    <td style="background:rgba(202,1,0,.06)"><input class="cr-cf2" data-id="${r.id}" value="${esc(r.client_feedback_v2||"")}" placeholder="Client feedback" style="${iS};min-width:120px"></td>
-    <td style="text-align:center"><input type="checkbox" ${r.approved_by_client?"checked":""} onchange="toggleApproval(${r.id}, this.checked)"></td>
-    <td style="white-space:nowrap">
-      <button class="btn-icon btn-edit-cr" data-id="${r.id}" title="Edit">✏</button>
-      <button class="btn-icon btn-del-cr" data-id="${r.id}" title="Delete" style="color:#666">✕</button>
-    </td>
-  </tr>`;}).join("") : `<tr><td colspan="24" class="empty-cell">No content review entries yet.</td></tr>`;
+  const iS = "background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:11px;width:100%";
+  const NCOLS = 16;
+
+  $("cr-body").innerHTML = Object.values(groups).length ? Object.values(groups).map(group => {
+    const inf = group.inf;
+
+    // Parent row — full-width creator bar
+    const parentRow = `<tr style="background:var(--panel2);border-top:2px solid var(--border)">
+      <td colspan="${NCOLS}" style="padding:10px 16px">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <strong>${esc(inf.name||"")}</strong>
+          ${inf.ig_handle ? `<a href="${esc(inf.ig_url||`https://instagram.com/${inf.ig_handle}`)}" target="_blank" style="color:var(--red);font-size:12px">@${esc(inf.ig_handle)}</a>` : ""}
+          ${inf.tt_handle ? `<a href="${esc(inf.tt_url||`https://tiktok.com/@${inf.tt_handle}`)}" target="_blank" style="color:var(--red);font-size:12px">@${esc(inf.tt_handle)}</a>` : ""}
+          ${inf.tier ? `<span class="badge badge-int">${esc(inf.tier)}</span>` : ""}
+          ${inf.vertical||inf.archetype ? `<span style="color:var(--dim);font-size:11px">${esc(inf.vertical||inf.archetype)}</span>` : ""}
+          <button class="btn-sec btn-add-cr-del" data-inf-id="${group.infId}" style="padding:3px 12px;font-size:11px;margin-left:auto">+ Add Deliverable</button>
+        </div>
+      </td>
+    </tr>`;
+
+    // Sub-rows — one per deliverable record
+    const subRows = group.records.map(r => `<tr>
+      <td style="color:var(--dim);font-size:13px;padding-left:20px;white-space:nowrap">↳</td>
+      <td>
+        <select class="cr-del" data-id="${r.id}" style="${iS};min-width:150px">
+          <option value="">—</option>
+          ${CR_DELIVERABLES.map(d=>`<option ${r.deliverable_type===d?"selected":""}>${esc(d)}</option>`).join("")}
+        </select>
+      </td>
+      <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:110px"></td>
+      <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:110px"></td>
+      <td><input class="cr-concept" data-id="${r.id}" value="${esc(r.concept||"")}" placeholder="Concept" style="${iS};min-width:110px"></td>
+      <td><input class="cr-concept-fbk" data-id="${r.id}" value="${esc(r.concept_feedback||"")}" placeholder="Concept feedback" style="${iS};min-width:110px"></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:4px">
+          <input class="cr-cv1" data-id="${r.id}" value="${esc(r.content_v1||"")}" placeholder="Link…" style="${iS};min-width:80px">
+          ${r.content_v1 ? `<a href="${esc(r.content_v1)}" target="_blank" style="color:var(--red);font-size:12px;flex-shrink:0">↗</a>` : ""}
+        </div>
+      </td>
+      <td><input class="cr-cap1" data-id="${r.id}" value="${esc(r.caption_v1||"")}" placeholder="Caption" style="${iS};min-width:90px"></td>
+      <td><input class="cr-af1" data-id="${r.id}" value="${esc(r.a8_feedback_v1||"")}" placeholder="A8 notes" style="${iS};min-width:90px"></td>
+      <td style="background:rgba(202,1,0,.04)"><input class="cr-cf1" data-id="${r.id}" value="${esc(r.client_feedback_v1||"")}" placeholder="Client feedback" style="${iS};min-width:110px"></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:4px">
+          <input class="cr-cv2" data-id="${r.id}" value="${esc(r.content_v2||"")}" placeholder="Link…" style="${iS};min-width:80px">
+          ${r.content_v2 ? `<a href="${esc(r.content_v2)}" target="_blank" style="color:var(--red);font-size:12px;flex-shrink:0">↗</a>` : ""}
+        </div>
+      </td>
+      <td><input class="cr-cap2" data-id="${r.id}" value="${esc(r.caption_v2||"")}" placeholder="Caption" style="${iS};min-width:90px"></td>
+      <td><input class="cr-af2" data-id="${r.id}" value="${esc(r.a8_feedback_v2||"")}" placeholder="A8 notes" style="${iS};min-width:90px"></td>
+      <td style="background:rgba(202,1,0,.04)"><input class="cr-cf2" data-id="${r.id}" value="${esc(r.client_feedback_v2||"")}" placeholder="Client feedback" style="${iS};min-width:110px"></td>
+      <td style="text-align:center">
+        <input type="checkbox" class="cr-approved-chk" data-id="${r.id}" data-inf-id="${r.influencer_id}" data-live="${r.live_date||""}" data-del="${esc(r.deliverable_type||"")}" ${r.approved_by_client?"checked":""} style="accent-color:var(--green);width:16px;height:16px;cursor:pointer">
+      </td>
+      <td>
+        <button class="btn-icon btn-del-cr" data-id="${r.id}" title="Delete" style="color:var(--dim)">✕</button>
+      </td>
+    </tr>`).join("");
+
+    return parentRow + subRows;
+  }).join("") : `<tr><td colspan="${NCOLS}" class="empty-cell">No content review entries yet.</td></tr>`;
 
   // Inline save handlers
   const wire = (cls, field, evt="blur") =>
     document.querySelectorAll(`.${cls}`).forEach(el =>
       el.addEventListener(evt, () => apiPatch(`/api/content_review/${el.dataset.id}`, {[field]: el.value || null}))
     );
-  wire("cr-status",    "status",               "change");
-  wire("cr-campaign",  "campaign",             "change");
-  wire("cr-del",       "deliverable_type");
-  wire("cr-due",       "content_due_date",     "change");
-  wire("cr-live",      "live_date",            "change");
-  wire("cr-concept",   "concept");
-  wire("cr-cv1",       "content_v1");
-  wire("cr-cap1",      "caption_v1");
-  wire("cr-af1",       "a8_feedback_v1");
-  wire("cr-cf1",       "client_feedback_v1");
-  wire("cr-cv2",       "content_v2");
-  wire("cr-cap2",      "caption_v2");
-  wire("cr-af2",       "a8_feedback_v2");
-  wire("cr-cf2",       "client_feedback_v2");
+  wire("cr-del",         "deliverable_type",  "change");
+  wire("cr-due",         "content_due_date",  "change");
+  wire("cr-live",        "live_date",         "change");
+  wire("cr-concept",     "concept");
+  wire("cr-concept-fbk", "concept_feedback");
+  wire("cr-cv1",         "content_v1");
+  wire("cr-cap1",        "caption_v1");
+  wire("cr-af1",         "a8_feedback_v1");
+  wire("cr-cf1",         "client_feedback_v1");
+  wire("cr-cv2",         "content_v2");
+  wire("cr-cap2",        "caption_v2");
+  wire("cr-af2",         "a8_feedback_v2");
+  wire("cr-cf2",         "client_feedback_v2");
 
-  document.querySelectorAll(".btn-edit-cr").forEach(b =>
-    b.addEventListener("click", () => {
-      const row = rows.find(r => String(r.id) === b.dataset.id);
-      if (row) openContentReviewModal(row);
+  // Approved checkbox → patch + create calendar entry
+  document.querySelectorAll(".cr-approved-chk").forEach(cb =>
+    cb.addEventListener("change", async () => {
+      await apiPatch(`/api/content_review/${cb.dataset.id}`, {approved_by_client: cb.checked});
+      if (cb.checked && cb.dataset.live) {
+        const del = cb.dataset.del;
+        await apiPost("/api/content_calendar", {
+          influencer_id:  parseInt(cb.dataset.infId),
+          scheduled_date: cb.dataset.live,
+          deliverable:    JSON.stringify({
+            ig_feed:  del.includes("In-Feed") ? 1 : 0,
+            ig_reel:  del.includes("Reel")    ? 1 : 0,
+            ig_story: del.includes("Story")   ? 1 : 0,
+            tiktok:   del.includes("TikTok")  ? 1 : 0,
+          }),
+          approved: true,
+          collab:   false,
+        });
+      }
     })
   );
+
+  // + Add Deliverable button
+  document.querySelectorAll(".btn-add-cr-del").forEach(b =>
+    b.addEventListener("click", () => openContentReviewModal({influencer_id: parseInt(b.dataset.infId)}))
+  );
+
+  // Delete
   document.querySelectorAll(".btn-del-cr").forEach(b =>
     b.addEventListener("click", async () => {
-      if (!confirm("Delete this entry?")) return;
+      if (!confirm("Delete this deliverable entry?")) return;
       await fetch(`/api/content_review/${b.dataset.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
       loadContentReview();
     })
   );
-
-  // Auto-fill deliverables from Paid Plan qtys (fills all rows, saves to DB)
-  setTimeout(async () => {
-    if (!ppRows.length) {
-      try { ppRows = await apiGet("/api/paid_plan"); } catch {}
-    }
-    rows.forEach(r => {
-      const plan = ppRows.find(p => p.influencer_id === r.influencer_id);
-      const summary = ppDeliverableSummary(plan);
-      if (!summary) return;
-      // Always update to the latest Paid Plan summary
-      const inp = document.querySelector(`.cr-del[data-id="${r.id}"]`);
-      if (inp && inp.value !== summary) {
-        inp.value = summary;
-        apiPatch(`/api/content_review/${r.id}`, {deliverable_type: summary});
-      }
-    });
-  }, 0);
 }
-
-window.toggleApproval = async (id, val) => {
-  await apiPatch(`/api/content_review/${id}`, {approved_by_client: val});
-};
 
 $("cr-filter-status")?.addEventListener("change", loadContentReview);
 $("btn-add-cr").addEventListener("click", () => openContentReviewModal(null));
 
 async function openContentReviewModal(existing) {
   await getInfluencers();
-  const isEdit = !!existing;
   const e = existing || {};
   const inPaidPlan = allInfluencers.filter(i => i.in_paid_plan);
-  openModal(isEdit ? "Edit Entry" : "Add Content Review", `
+  openModal("Add Deliverable", `
     <div class="form-grid-2">
       <div class="fld"><label>Creator</label>
         <select id="crf-inf">
@@ -1165,45 +1178,25 @@ async function openContentReviewModal(existing) {
           ${CR_CAMPAIGNS.map(c=>`<option ${e.campaign===c?"selected":""}>${esc(c)}</option>`).join("")}
         </select>
       </div>
-      <div class="fld"><label>Deliverable (auto-fills from Paid Plan)</label>
-        <input id="crf-del" value="${esc(e.deliverable_type||"")}" placeholder="e.g. 1 Reel · 1 TikTok">
+      <div class="fld"><label>Deliverable</label>
+        <select id="crf-del">
+          <option value="">—</option>
+          ${CR_DELIVERABLES.map(d=>`<option ${e.deliverable_type===d?"selected":""}>${esc(d)}</option>`).join("")}
+        </select>
       </div>
       <div class="fld"><label>Content Due</label><input type="date" id="crf-due" value="${e.content_due_date||""}"></div>
       <div class="fld"><label>Live Date</label><input type="date" id="crf-live" value="${e.live_date||""}"></div>
-      <div class="fld"><label>Month</label><input id="crf-month" value="${esc(e.month||"")}"></div>
     </div>
   `, async () => {
-    const payload = {
+    await apiPost("/api/content_review", {
       influencer_id:    parseInt($("crf-inf").value),
       campaign:         $("crf-campaign").value,
       deliverable_type: $("crf-del").value,
       content_due_date: $("crf-due").value || null,
       live_date:        $("crf-live").value || null,
-      month:            $("crf-month").value.trim(),
-    };
-    if (isEdit) await apiPatch(`/api/content_review/${existing.id}`, payload);
-    else await apiPost("/api/content_review", payload);
+    });
     closeModal(); loadContentReview();
   });
-
-  // Auto-populate deliverable when creator is selected (or on modal open)
-  setTimeout(async () => {
-    // Ensure ppRows is populated (user may not have visited Paid Plan tab yet)
-    if (!ppRows.length) {
-      try { ppRows = await apiGet("/api/paid_plan"); } catch {}
-    }
-
-    const applyAutoFill = () => {
-      const infId = parseInt($("crf-inf")?.value);
-      if (!infId) return;
-      const plan = ppRows.find(p => p.influencer_id === infId);
-      const summary = ppDeliverableSummary(plan);
-      if (summary) $("crf-del").value = summary;
-    };
-
-    applyAutoFill(); // fire immediately on open
-    $("crf-inf")?.addEventListener("change", applyAutoFill);
-  }, 0);
 }
 
 // ── 6. Live Posts ─────────────────────────────────────────────────────────────
