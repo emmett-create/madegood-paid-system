@@ -421,45 +421,90 @@ function openInfluencerModal(existing) {
 const OUTREACH_STATUSES = ["Not Outreached","Outreached","Followed Up 1x","Followed Up 2x","Interested","Passed","Not Responsive","Conflicted Out"];
 
 async function loadOutreach() {
-  const data = await apiGet("/api/outreach");
+  const [data, planData] = await Promise.all([
+    apiGet("/api/outreach"),
+    ppRows.length ? Promise.resolve(ppRows) : apiGet("/api/paid_plan"),
+  ]);
+  if (!ppRows.length) ppRows = planData;
+
+  // Build map: influencer_id → plan record
+  const planMap = {};
+  ppRows.forEach(p => { planMap[p.influencer_id] = p; });
+
   const search = $("or-search")?.value.toLowerCase() || "";
   const status = $("or-filter-status")?.value || "";
   let rows = data;
   if (search) rows = rows.filter(r => `${r.name} ${r.ig_handle}`.toLowerCase().includes(search));
   if (status) rows = rows.filter(r => r.outreach_status === status);
 
-  const iStyle = "background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;font-size:12px";
-  $("or-body").innerHTML = rows.length ? rows.map(r => `<tr>
-    <td><input class="or-owner" data-id="${r.id}" value="${esc(r.outreach_owner||"")}" placeholder="Owner" style="width:90px;${iStyle}"></td>
-    <td><strong>${esc(r.name||"")}</strong></td>
-    <td>${r.ig_handle ? `<a href="${esc(r.ig_url||`https://instagram.com/${r.ig_handle}`)}" target="_blank">@${esc(r.ig_handle)}</a>` : "—"}</td>
-    <td>${r.tt_handle ? `<a href="${esc(r.tt_url||`https://tiktok.com/@${r.tt_handle}`)}" target="_blank">@${esc(r.tt_handle)}</a>` : "—"}</td>
-    <td><input class="or-email" data-id="${r.id}" value="${esc(r.email||"")}" placeholder="Email" style="width:160px;${iStyle}"></td>
+  const iS = "background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:3px 6px;font-size:11px";
+
+  $("or-body").innerHTML = rows.length ? rows.map(r => {
+    const plan = planMap[r.id] || {};
+    return `<tr>
+    <td><input class="or-owner" data-id="${r.id}" value="${esc(r.outreach_owner||"")}" placeholder="Owner" style="width:80px;${iS}"></td>
+    <td style="white-space:nowrap"><strong>${esc(r.name||"")}</strong></td>
+    <td>${r.ig_handle ? `<a href="${esc(r.ig_url||`https://instagram.com/${r.ig_handle}`)}" target="_blank" style="color:var(--red)">@${esc(r.ig_handle)}</a>` : "—"}</td>
+    <td>${r.tt_handle ? `<a href="${esc(r.tt_url||`https://tiktok.com/@${r.tt_handle}`)}" target="_blank" style="color:var(--red)">@${esc(r.tt_handle)}</a>` : "—"}</td>
+    <td><input class="or-email" data-id="${r.id}" value="${esc(r.email||"")}" placeholder="Email" style="width:150px;${iS}"></td>
     <td>${r.tier ? `<span class="badge badge-int">${esc(r.tier)}</span>` : "—"}</td>
-    <td>${esc(r.vertical||r.archetype||"")}</td>
-    <td>${esc(r.location||"")}</td>
-    <td>${esc(r.gender||"")}</td>
+    <td style="font-size:11px">${esc(r.vertical||r.archetype||"")}</td>
+    <td style="font-size:11px">${esc(r.location||"")}</td>
+    <td style="font-size:11px">${esc(r.gender||"")}</td>
     <td>${r.list_type==="INT/EXT"
         ? `<span class="badge badge-int">INT</span> <span class="badge badge-ext">EXT</span>`
-        : `<span class="badge ${r.list_type==="INT"?"badge-int":"badge-ext"}">${esc(r.list_type)}</span>`
-      }</td>
+        : `<span class="badge ${r.list_type==="INT"?"badge-int":"badge-ext"}">${esc(r.list_type)}</span>`}</td>
+    <td><input class="or-init-rate" data-id="${r.id}" value="${esc(r.initial_rate||"")}" placeholder="$" style="width:70px;${iS}"></td>
+    <td><input class="or-quot-rate" data-id="${r.id}" value="${esc(r.quoted_rate||"")}" placeholder="$" style="width:70px;${iS}"></td>
     <td>
-      <select class="or-status-sel" data-id="${r.id}" style="${iStyle}">
+      <div style="display:grid;grid-template-columns:auto 36px;gap:2px 4px;align-items:center;font-size:10px">
+        <span style="color:var(--dim)">Feed</span><input type="number" class="or-del" data-id="${r.id}" data-field="ig_feed_qty" value="${plan.ig_feed_qty||0}" min="0" style="width:36px;${iS};padding:2px 4px">
+        <span style="color:var(--dim)">Reel</span><input type="number" class="or-del" data-id="${r.id}" data-field="ig_reel_qty" value="${plan.ig_reel_qty||0}" min="0" style="width:36px;${iS};padding:2px 4px">
+        <span style="color:var(--dim)">Story</span><input type="number" class="or-del" data-id="${r.id}" data-field="ig_story_qty" value="${plan.ig_story_qty||0}" min="0" style="width:36px;${iS};padding:2px 4px">
+        <span style="color:var(--dim)">TT</span><input type="number" class="or-del" data-id="${r.id}" data-field="tt_qty" value="${plan.tt_qty||0}" min="0" style="width:36px;${iS};padding:2px 4px">
+      </div>
+    </td>
+    <td>
+      <select class="or-usage" data-id="${r.id}" style="${iS};min-width:140px">
+        <option value="">—</option>
+        ${["Organic (30 days)","Baked in Paid (30 days)","Pre-Negotiated Paid (30 days)","Other"].map(u=>`<option ${r.outreach_usage===u?"selected":""}>${u}</option>`).join("")}
+      </select>
+    </td>
+    <td>
+      <select class="or-status-sel" data-id="${r.id}" style="${iS};min-width:130px">
         ${OUTREACH_STATUSES.map(s=>`<option ${r.outreach_status===s?"selected":""}>${s}</option>`).join("")}
       </select>
     </td>
-    <td><input type="date" class="or-date" data-id="${r.id}" value="${r.outreach_date||""}" style="${iStyle}"></td>
-    <td><input type="date" class="or-last" data-id="${r.id}" value="${r.last_contact||""}" style="${iStyle}"></td>
-    <td><input class="or-notes" data-id="${r.id}" value="${esc(r.outreach_notes||"")}" placeholder="Notes" style="width:140px;${iStyle}"></td>
+    <td><input type="date" class="or-date" data-id="${r.id}" value="${r.outreach_date||""}" style="${iS}"></td>
+    <td><input type="date" class="or-last" data-id="${r.id}" value="${r.last_contact||""}" style="${iS}"></td>
+    <td><input class="or-notes" data-id="${r.id}" value="${esc(r.outreach_notes||"")}" placeholder="Notes" style="width:120px;${iS}"></td>
     <td>${r.in_paid_plan ? '<span class="badge badge-locked">✓</span>' : ""}</td>
-  </tr>`).join("") : `<tr><td colspan="15" class="empty-cell">No creators found.</td></tr>`;
+  </tr>`;}).join("") : `<tr><td colspan="19" class="empty-cell">No creators found.</td></tr>`;
 
   const saveField = async (id, field, value) => {
     await apiPatch(`/api/influencers/${id}`, {[field]: value || null});
   };
+
+  // Helper: create or update paid_plan record with deliverable qtys
+  const savePlanQty = async (infId, field, value) => {
+    const plan = ppRows.find(p => p.influencer_id === parseInt(infId));
+    const qty  = parseInt(value) || 0;
+    if (plan?.id) {
+      await apiPatch(`/api/paid_plan/${plan.id}`, {[field]: qty});
+      plan[field] = qty;
+    } else {
+      const newPlan = await apiPost("/api/paid_plan", {influencer_id: parseInt(infId), [field]: qty});
+      if (newPlan?.id) ppRows.push({...newPlan, influencer_id: parseInt(infId)});
+    }
+  };
+
   document.querySelectorAll(".or-status-sel").forEach(s => s.addEventListener("change", () => saveField(s.dataset.id, "outreach_status", s.value)));
   document.querySelectorAll(".or-owner").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "outreach_owner", i.value.trim())));
   document.querySelectorAll(".or-email").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "email", i.value.trim())));
+  document.querySelectorAll(".or-init-rate").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "initial_rate", i.value.trim())));
+  document.querySelectorAll(".or-quot-rate").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "quoted_rate", i.value.trim())));
+  document.querySelectorAll(".or-usage").forEach(s => s.addEventListener("change", () => saveField(s.dataset.id, "outreach_usage", s.value)));
+  document.querySelectorAll(".or-del").forEach(i => i.addEventListener("change", () => savePlanQty(i.dataset.id, i.dataset.field, i.value)));
   document.querySelectorAll(".or-date").forEach(i => i.addEventListener("change", () => saveField(i.dataset.id, "outreach_date", i.value)));
   document.querySelectorAll(".or-last").forEach(i => i.addEventListener("change", () => saveField(i.dataset.id, "last_contact", i.value)));
   document.querySelectorAll(".or-notes").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "outreach_notes", i.value.trim())));
@@ -846,6 +891,10 @@ window.deleteCalEntry = async (id) => {
 
 $("btn-add-cal").addEventListener("click", async () => {
   await getInfluencers();
+  // Build outreach_usage map for auto-fill
+  const orData = await apiGet("/api/outreach").catch(() => []);
+  const usageMap = {};
+  orData.forEach(r => { if (r.outreach_usage) usageMap[r.id] = r.outreach_usage; });
   const inPaidPlan = allInfluencers.filter(i => i.in_paid_plan);
   openModal("Add Calendar Entry", `
     <div class="fld"><label>Creator (from Paid Plan)</label>
@@ -890,6 +939,14 @@ $("btn-add-cal").addEventListener("click", async () => {
     });
     closeModal(); loadCalendar();
   });
+
+  // Auto-fill usage from outreach when creator selected
+  setTimeout(() => {
+    $("calf-inf")?.addEventListener("change", () => {
+      const u = usageMap[parseInt($("calf-inf").value)];
+      if (u) $("calf-usage").value = u;
+    });
+  }, 0);
 });
 
 // ── 5. Content Review ─────────────────────────────────────────────────────────

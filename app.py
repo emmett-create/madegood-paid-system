@@ -133,6 +133,9 @@ class InfluencerIn(BaseModel):
     int_status: Optional[str] = None
     client_approved: Optional[bool] = None
     client_notes: Optional[str] = None
+    initial_rate: Optional[str] = None
+    quoted_rate: Optional[str] = None
+    outreach_usage: Optional[str] = None
     in_paid_plan: Optional[bool] = False
 
 @app.get("/api/influencers")
@@ -244,7 +247,8 @@ async def get_outreach():
         f"?client=eq.{config.CLIENT}&order=name.asc"
         f"&select=id,name,ig_handle,ig_url,tt_handle,tt_url,ig_followers,tt_followers,"
         f"list_type,tier,vertical,archetype,location,location_country,gender,email,"
-        f"int_status,outreach_status,outreach_owner,outreach_date,last_contact,outreach_notes,in_paid_plan")
+        f"int_status,initial_rate,quoted_rate,outreach_usage,"
+        f"outreach_status,outreach_owner,outreach_date,last_contact,outreach_notes,in_paid_plan")
     # Deduplicate by ig_handle — merge INT+EXT, exclude rejected-INT-only creators
     seen = {}
     for r in rows:
