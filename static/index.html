@@ -59,6 +59,7 @@
             <input type="search" class="search-box" id="ml-search" placeholder="Search name, handle, vertical…">
             <select id="ml-filter-tier" class="filter-sel"><option value="">All tiers</option><option>Nano</option><option>Micro</option><option>Mid</option><option>Macro</option><option>Mega</option></select>
             <select id="ml-filter-gender" class="filter-sel"><option value="">All genders</option><option>Female</option><option>Male</option><option>Non-binary</option></select>
+            <select id="ml-filter-campaign" class="filter-sel"><option value="">All campaigns</option></select>
             <button class="btn-pri" id="btn-add-influencer">+ Add Creator</button>
           </div>
         </div>
@@ -68,20 +69,22 @@
             <thead>
               <tr>
                 <th>Paid Plan</th>
-                <th>Name</th>
+                <th class="ml-sort" data-col="name" style="cursor:pointer">Name <span class="sort-icon"></span></th>
                 <th>IG Handle</th>
                 <th>TT Handle</th>
-                <th>IG Followers</th>
-                <th>TT Followers</th>
-                <th>Tier</th>
-                <th>Vertical</th>
-                <th>Location</th>
-                <th>Gender</th>
+                <th class="ml-sort" data-col="ig_followers" style="cursor:pointer">IG Followers <span class="sort-icon"></span></th>
+                <th class="ml-sort" data-col="tt_followers" style="cursor:pointer">TT Followers <span class="sort-icon"></span></th>
+                <th class="ml-sort" data-col="tier" style="cursor:pointer">Tier <span class="sort-icon"></span></th>
+                <th class="ml-sort" data-col="vertical" style="cursor:pointer">Vertical <span class="sort-icon"></span></th>
+                <th class="ml-sort" data-col="location" style="cursor:pointer">Location <span class="sort-icon"></span></th>
+                <th class="ml-sort" data-col="gender" style="cursor:pointer">Gender <span class="sort-icon"></span></th>
+                <th class="ml-sort" data-col="campaign" style="cursor:pointer">Campaign <span class="sort-icon"></span></th>
                 <th>Email</th>
+                <th>Notes</th>
                 <th></th>
               </tr>
             </thead>
-            <tbody id="ml-body"><tr><td colspan="12" class="empty-cell">Loading…</td></tr></tbody>
+            <tbody id="ml-body"><tr><td colspan="14" class="empty-cell">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>

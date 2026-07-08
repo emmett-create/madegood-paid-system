@@ -82,16 +82,43 @@ function influencerOptions(filter) {
 }
 
 // ── 1. Master List ────────────────────────────────────────────────────────────
+let mlSortCol = "name", mlSortDir = "asc";
+
 async function loadMasterList() {
   allInfluencers = [];  // reset cache
   const data = await apiGet(`/api/influencers?list_type=${currentListType}`);
-  const search = $("ml-search")?.value.toLowerCase() || "";
-  const tier   = $("ml-filter-tier")?.value || "";
-  const gender = $("ml-filter-gender")?.value || "";
+  const search   = $("ml-search")?.value.toLowerCase() || "";
+  const tier     = $("ml-filter-tier")?.value || "";
+  const gender   = $("ml-filter-gender")?.value || "";
+  const campaign = $("ml-filter-campaign")?.value || "";
   let rows = data;
-  if (search) rows = rows.filter(r => `${r.name} ${r.ig_handle} ${r.tt_handle} ${r.vertical}`.toLowerCase().includes(search));
-  if (tier)   rows = rows.filter(r => r.tier === tier);
-  if (gender) rows = rows.filter(r => r.gender === gender);
+  if (search)   rows = rows.filter(r => `${r.name} ${r.ig_handle} ${r.tt_handle} ${r.vertical} ${r.campaign||""}`.toLowerCase().includes(search));
+  if (tier)     rows = rows.filter(r => r.tier === tier);
+  if (gender)   rows = rows.filter(r => r.gender === gender);
+  if (campaign) rows = rows.filter(r => r.campaign === campaign);
+
+  // Populate campaign filter options dynamically
+  const campaigns = [...new Set(data.map(r => r.campaign).filter(Boolean))].sort();
+  const campSel = $("ml-filter-campaign");
+  if (campSel) {
+    const cur = campSel.value;
+    campSel.innerHTML = `<option value="">All campaigns</option>` + campaigns.map(c => `<option ${cur===c?"selected":""}>${esc(c)}</option>`).join("");
+  }
+
+  // Sort
+  rows.sort((a, b) => {
+    let av = a[mlSortCol] ?? "", bv = b[mlSortCol] ?? "";
+    if (["ig_followers","tt_followers"].includes(mlSortCol)) { av = +av || 0; bv = +bv || 0; }
+    else { av = String(av).toLowerCase(); bv = String(bv).toLowerCase(); }
+    if (av < bv) return mlSortDir === "asc" ? -1 : 1;
+    if (av > bv) return mlSortDir === "asc" ?  1 : -1;
+    return 0;
+  });
+
+  // Update sort icons
+  document.querySelectorAll(".ml-sort .sort-icon").forEach(el => el.textContent = "");
+  const activeSort = document.querySelector(`.ml-sort[data-col="${mlSortCol}"] .sort-icon`);
+  if (activeSort) activeSort.textContent = mlSortDir === "asc" ? " ↑" : " ↓";
 
   const inPaid = rows.filter(r => r.in_paid_plan).length;
   $("ml-summary").innerHTML = `<span><strong>${rows.length}</strong> creators</span><span><strong>${inPaid}</strong> in paid plan</span>`;
@@ -107,13 +134,15 @@ async function loadMasterList() {
     <td>${esc(r.vertical || "")}</td>
     <td>${esc(r.location || "")}</td>
     <td>${esc(r.gender || "")}</td>
+    <td>${esc(r.campaign || "")}</td>
     <td>${esc(r.email || "")}</td>
+    <td><input class="ml-notes-inp" data-id="${r.id}" value="${esc(r.review_notes||"")}" placeholder="Notes…" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 7px;font-size:11px;width:140px"></td>
     <td>
       <button class="btn-icon btn-edit-inf" data-id="${r.id}" title="Edit">✏</button>
       ${currentListType==="INT" ? `<button class="btn-icon btn-copy-ext" data-id="${r.id}" title="Add to External list" style="font-size:10px;letter-spacing:.3px">→EXT</button>` : ""}
       <button class="btn-icon btn-del-inf" data-id="${r.id}" title="Delete">✕</button>
     </td>
-  </tr>`).join("") : `<tr><td colspan="12" class="empty-cell">No creators yet. Click + Add Creator.</td></tr>`;
+  </tr>`).join("") : `<tr><td colspan="14" class="empty-cell">No creators yet. Click + Add Creator.</td></tr>`;
 
   // Paid plan checkboxes
   document.querySelectorAll(".paid-plan-chk").forEach(cb => {
@@ -135,6 +164,13 @@ async function loadMasterList() {
       loadMasterList();
     })
   );
+  // Inline notes save
+  document.querySelectorAll(".ml-notes-inp").forEach(inp =>
+    inp.addEventListener("blur", () =>
+      apiPatch(`/api/influencers/${inp.dataset.id}`, {review_notes: inp.value.trim() || null})
+    )
+  );
+
   document.querySelectorAll(".btn-copy-ext").forEach(b =>
     b.addEventListener("click", async () => {
       const row = rows.find(r => String(r.id) === b.dataset.id);
@@ -173,8 +209,18 @@ document.querySelectorAll(".list-btn").forEach(btn => {
   });
 });
 
-["ml-search","ml-filter-tier","ml-filter-gender"].forEach(id =>
+["ml-search","ml-filter-tier","ml-filter-gender","ml-filter-campaign"].forEach(id =>
   document.getElementById(id)?.addEventListener("input", () => loadMasterList())
+);
+
+// Sort column headers
+document.querySelectorAll(".ml-sort").forEach(th =>
+  th.addEventListener("click", () => {
+    const col = th.dataset.col;
+    if (mlSortCol === col) mlSortDir = mlSortDir === "asc" ? "desc" : "asc";
+    else { mlSortCol = col; mlSortDir = "asc"; }
+    loadMasterList();
+  })
 );
 
 $("btn-add-influencer").addEventListener("click", () => openInfluencerModal(null));
@@ -237,9 +283,10 @@ function openInfluencerModal(existing) {
       <div class="fld"><label>Location</label><input id="mf-location" value="${esc(e.location||"")}"></div>
       <div class="fld"><label>Email</label><input type="email" id="mf-email" value="${esc(e.email||"")}"></div>
     </div>
+    <div class="fld"><label>Campaign</label><input id="mf-campaign" value="${esc(e.campaign||"")}"></div>
     <div class="fld"><label>Audience Age Breakdown</label><input id="mf-age" value="${esc(e.audience_age||"")}"></div>
     <div class="fld"><label>ShopMy Conversion Data</label><input id="mf-shopmy" value="${esc(e.shopmy_data||"")}"></div>
-    ${currentListType==="EXT" ? `<div class="fld"><label>External Feedback</label><textarea id="mf-ext-feedback" rows="2">${esc(e.external_feedback||"")}</textarea></div>` : ""}
+    <div class="fld"><label>Notes</label><textarea id="mf-ext-feedback" rows="2">${esc(e.external_feedback||"")}</textarea></div>
   `, async () => {
     const igHandle = $("mf-ig-handle").value.trim().replace(/^@/,"");
     const ttHandle = $("mf-tt-handle").value.trim().replace(/^@/,"");
@@ -258,6 +305,7 @@ function openInfluencerModal(existing) {
       archetype:     $("mf-vertical").value,
       location:      $("mf-location").value.trim(),
       email:         $("mf-email").value.trim(),
+      campaign:      $("mf-campaign").value.trim(),
       audience_age:  $("mf-age").value.trim(),
       shopmy_data:   $("mf-shopmy").value.trim(),
       external_feedback: $("mf-ext-feedback")?.value.trim() || null,

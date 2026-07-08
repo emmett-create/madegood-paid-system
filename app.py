@@ -127,6 +127,8 @@ class InfluencerIn(BaseModel):
     audience_age: Optional[str] = None
     shopmy_data: Optional[str] = None
     external_feedback: Optional[str] = None
+    campaign: Optional[str] = None
+    review_notes: Optional[str] = None
     in_paid_plan: Optional[bool] = False
 
 @app.get("/api/influencers")
