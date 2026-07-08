@@ -1007,18 +1007,21 @@ function ppDeliverableSummary(plan) {
 const CR_CAMPAIGNS = ["A8 Paid Influencers", "MadeGood Paid Influencers", "Shipping & PR Mailers"];
 const CR_STATUSES  = ["New! Needs Client Review", "Client Reviewed: Approved", "Client Reviewed: Needs Edits"];
 
-// Helper: auto-create one Content Review entry per deliverable type when Locked
+// Helper: auto-create N Content Review entries per deliverable type when Locked
 async function autoCreateContentReviewEntries(influencerId, plan) {
   const existing = await apiGet("/api/content_review");
-  const existingTypes = existing.filter(r => r.influencer_id === influencerId).map(r => r.deliverable_type);
-  const toCreate = [];
-  if ((plan.ig_reel_qty  || 0) > 0) toCreate.push("Instagram Reel");
-  if ((plan.ig_story_qty || 0) > 0) toCreate.push("Instagram Story (3-5 frames)");
-  if ((plan.ig_feed_qty  || 0) > 0) toCreate.push("Instagram In-Feed (Still)");
-  if ((plan.tt_qty       || 0) > 0) toCreate.push("TikTok");
-  for (const type of toCreate) {
-    if (!existingTypes.includes(type)) {
-      await apiPost("/api/content_review", {influencer_id: influencerId, deliverable_type: type});
+  const existingForInf = existing.filter(r => r.influencer_id === influencerId);
+  const deliverables = [
+    { type: "IG Reel",   qty: plan.ig_reel_qty  || 0 },
+    { type: "IG Story",  qty: plan.ig_story_qty || 0 },
+    { type: "IG Feed",   qty: plan.ig_feed_qty  || 0 },
+    { type: "TikTok",    qty: plan.tt_qty       || 0 },
+  ];
+  for (const del of deliverables) {
+    const existingCount = existingForInf.filter(r => r.deliverable_type === del.type).length;
+    const toAdd = del.qty - existingCount;
+    for (let i = 0; i < toAdd; i++) {
+      await apiPost("/api/content_review", {influencer_id: influencerId, deliverable_type: del.type});
     }
   }
 }
@@ -1062,12 +1065,7 @@ async function loadContentReview() {
     // Sub-rows — one per deliverable record
     const subRows = group.records.map(r => `<tr>
       <td style="color:var(--dim);font-size:13px;padding-left:20px;white-space:nowrap">↳</td>
-      <td>
-        <select class="cr-del" data-id="${r.id}" style="${iS};min-width:150px">
-          <option value="">—</option>
-          ${CR_DELIVERABLES.map(d=>`<option ${r.deliverable_type===d?"selected":""}>${esc(d)}</option>`).join("")}
-        </select>
-      </td>
+      <td style="white-space:nowrap;font-weight:600;font-size:12px">${esc(r.deliverable_type||"—")}</td>
       <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:110px"></td>
       <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:110px"></td>
       <td><input class="cr-concept" data-id="${r.id}" value="${esc(r.concept||"")}" placeholder="Concept" style="${iS};min-width:110px"></td>
@@ -1106,7 +1104,6 @@ async function loadContentReview() {
     document.querySelectorAll(`.${cls}`).forEach(el =>
       el.addEventListener(evt, () => apiPatch(`/api/content_review/${el.dataset.id}`, {[field]: el.value || null}))
     );
-  wire("cr-del",         "deliverable_type",  "change");
   wire("cr-due",         "content_due_date",  "change");
   wire("cr-live",        "live_date",         "change");
   wire("cr-concept",     "concept");
@@ -1181,7 +1178,10 @@ async function openContentReviewModal(existing) {
       <div class="fld"><label>Deliverable</label>
         <select id="crf-del">
           <option value="">—</option>
-          ${CR_DELIVERABLES.map(d=>`<option ${e.deliverable_type===d?"selected":""}>${esc(d)}</option>`).join("")}
+          <option ${e.deliverable_type==="IG Reel"?"selected":""}>IG Reel</option>
+          <option ${e.deliverable_type==="IG Story"?"selected":""}>IG Story</option>
+          <option ${e.deliverable_type==="IG Feed"?"selected":""}>IG Feed</option>
+          <option ${e.deliverable_type==="TikTok"?"selected":""}>TikTok</option>
         </select>
       </div>
       <div class="fld"><label>Content Due</label><input type="date" id="crf-due" value="${e.content_due_date||""}"></div>
