@@ -1048,23 +1048,35 @@ async function loadContentReview() {
   $("cr-body").innerHTML = Object.values(groups).length ? Object.values(groups).map(group => {
     const inf = group.inf;
 
-    // Parent row — full-width creator bar
+    // Parent row — creator info aligned with column headers
     const parentRow = `<tr style="background:var(--panel2);border-top:2px solid var(--border)">
-      <td colspan="${NCOLS}" style="padding:10px 16px">
-        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-          <strong>${esc(inf.name||"")}</strong>
-          ${inf.ig_handle ? `<a href="${esc(inf.ig_url||`https://instagram.com/${inf.ig_handle}`)}" target="_blank" style="color:var(--red);font-size:12px">@${esc(inf.ig_handle)}</a>` : ""}
-          ${inf.tt_handle ? `<a href="${esc(inf.tt_url||`https://tiktok.com/@${inf.tt_handle}`)}" target="_blank" style="color:var(--red);font-size:12px">@${esc(inf.tt_handle)}</a>` : ""}
-          ${inf.tier ? `<span class="badge badge-int">${esc(inf.tier)}</span>` : ""}
-          ${inf.vertical||inf.archetype ? `<span style="color:var(--dim);font-size:11px">${esc(inf.vertical||inf.archetype)}</span>` : ""}
-          <button class="btn-sec btn-add-cr-del" data-inf-id="${group.infId}" style="padding:3px 12px;font-size:11px;margin-left:auto">+ Add Deliverable</button>
-        </div>
-      </td>
+      <td></td>
+      <td style="white-space:nowrap"><strong>${esc(inf.name||"")}</strong></td>
+      <td>${inf.ig_handle ? `<a href="${esc(inf.ig_url||`https://instagram.com/${inf.ig_handle}`)}" target="_blank" style="color:var(--red);font-size:12px">@${esc(inf.ig_handle)}</a>` : "—"}</td>
+      <td>${inf.tt_handle ? `<a href="${esc(inf.tt_url||`https://tiktok.com/@${inf.tt_handle}`)}" target="_blank" style="color:var(--red);font-size:12px">@${esc(inf.tt_handle)}</a>` : "—"}</td>
+      <td style="color:var(--dim);font-size:11px">${inf.ig_followers ? Number(inf.ig_followers).toLocaleString() : "—"}</td>
+      <td style="color:var(--dim);font-size:11px">${inf.tt_followers ? Number(inf.tt_followers).toLocaleString() : "—"}</td>
+      <td>${inf.tier ? `<span class="badge badge-int">${esc(inf.tier)}</span>` : "—"}</td>
+      <td style="font-size:11px;color:var(--dim)">${esc(inf.vertical||inf.archetype||"")}</td>
+      <td><button class="btn-sec btn-add-cr-del" data-inf-id="${group.infId}" style="padding:3px 10px;font-size:11px">+ Add</button></td>
+      <td colspan="${NCOLS - 9}"></td>
     </tr>`;
 
-    // Sub-rows — one per deliverable record (9 empty cells for creator info columns)
+    // Sub-rows — Status in col 1, Campaign in col 9, empty cols 2-8, ↳ in col 10
     const subRows = group.records.map(r => `<tr>
-      <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+      <td>
+        <select class="cr-status" data-id="${r.id}" style="${iS};min-width:130px;font-size:10px">
+          <option value="">—</option>
+          ${CR_STATUSES.map(s=>`<option ${r.status===s?"selected":""}>${esc(s)}</option>`).join("")}
+        </select>
+      </td>
+      <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+      <td>
+        <select class="cr-campaign" data-id="${r.id}" style="${iS};min-width:120px">
+          <option value="">—</option>
+          ${CR_CAMPAIGNS.map(c=>`<option ${r.campaign===c?"selected":""}>${esc(c)}</option>`).join("")}
+        </select>
+      </td>
       <td style="color:var(--dim);font-size:13px;padding-left:8px;white-space:nowrap">↳</td>
       <td style="white-space:nowrap;font-weight:600;font-size:12px">${esc(r.deliverable_type||"—")}</td>
       <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:110px"></td>
@@ -1105,6 +1117,8 @@ async function loadContentReview() {
     document.querySelectorAll(`.${cls}`).forEach(el =>
       el.addEventListener(evt, () => apiPatch(`/api/content_review/${el.dataset.id}`, {[field]: el.value || null}))
     );
+  wire("cr-status",      "status",            "change");
+  wire("cr-campaign",    "campaign",          "change");
   wire("cr-due",         "content_due_date",  "change");
   wire("cr-live",        "live_date",         "change");
   wire("cr-concept",     "concept");
