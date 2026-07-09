@@ -329,7 +329,7 @@ async def get_live_posts():
     rows = await sb_get("live_posts",
         f"?client=eq.{config.CLIENT}&order=live_date.desc")
     influencers = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,name,ig_handle")
+        f"?client=eq.{config.CLIENT}&select=id,name,ig_handle,ig_followers,tt_followers")
     inf_map = {i["id"]: i for i in influencers}
     for r in rows:
         r["influencer"] = inf_map.get(r["influencer_id"], {})

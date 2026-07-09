@@ -1313,26 +1313,39 @@ async function openContentReviewModal(existing) {
 }
 
 // ── 6. Live Posts ─────────────────────────────────────────────────────────────
+window.updateBoostField = async (id, val) => {
+  await apiPatch(`/api/live_posts/${id}`, {content_boosted: val});
+};
+
 async function loadLivePosts() {
   const data = await apiGet("/api/live_posts");
-  $("lp-body").innerHTML = data.length ? data.map(r=>`<tr>
+  $("lp-body").innerHTML = data.length ? data.map(r=>{
+    const followers = r.influencer?.ig_followers || r.influencer?.tt_followers || 0;
+    const views     = r.total_views || 0;
+    const eng       = r.total_engagement || 0;
+    const impRate   = (followers && views) ? ((views / followers) * 100).toFixed(1) + "%" : "—";
+    const engRate   = (views && eng)       ? ((eng / views) * 100).toFixed(1) + "%" : "—";
+    return `<tr>
     <td>${fmtDate(r.live_date)}</td>
     <td><strong>${esc(r.influencer?.name||"")}</strong></td>
     <td>${esc(r.campaign||"")}</td>
+    <td style="font-size:11px">${esc(r.deliverable_type||"")}</td>
+    <td style="font-size:11px">${esc(r.usage||"")}</td>
     <td>${fmtD(r.final_rate)}</td>
-    <td>${fmtD(r.total_cost)}</td>
-    <td>${r.live_link?`<a href="${esc(r.live_link)}" target="_blank">View ↗</a>`:"—"}</td>
+    <td>${r.live_link?'<a href="'+esc(r.live_link)+'" target="_blank">View ↗</a>':"—"}</td>
     <td>${fmt(r.total_views)}</td>
+    <td style="color:var(--dim)">${impRate}</td>
     <td>${fmt(r.total_engagement)}</td>
+    <td style="color:var(--dim)">${engRate}</td>
     <td>${r.cpv != null ? "$"+r.cpv : "—"}</td>
     <td>${r.cpe != null ? "$"+r.cpe : "—"}</td>
     <td>${esc(r.ig_spark_code||"")}</td>
-    <td>${r.content_boosted?"✓":""}</td>
+    <td><input type="checkbox" ${r.content_boosted?"checked":""} onchange="updateBoostField(${r.id},this.checked)" style="accent-color:var(--red);width:15px;height:15px;cursor:pointer"></td>
     <td>
       <button class="btn-icon btn-edit-lp" data-id="${r.id}">✏</button>
       <button class="btn-icon btn-del-lp" data-id="${r.id}">✕</button>
     </td>
-  </tr>`).join("") : `<tr><td colspan="13" class="empty-cell">No live posts yet.</td></tr>`;
+  </tr>`;}).join("") : `<tr><td colspan="16" class="empty-cell">No live posts yet.</td></tr>`;
 
   document.querySelectorAll(".btn-edit-lp").forEach(b=>
     b.addEventListener("click",()=>{ const row=data.find(r=>String(r.id)===b.dataset.id); if(row) openLivePostModal(row); })
@@ -1355,9 +1368,25 @@ async function openLivePostModal(existing) {
       </div>
       <div class="fld"><label>Live Date</label><input type="date" id="lpf-date" value="${e.live_date||""}"></div>
       <div class="fld"><label>Campaign</label><input id="lpf-campaign" value="${esc(e.campaign||"")}"></div>
+      <div class="fld"><label>Deliverable</label>
+        <select id="lpf-del">
+          <option value="">—</option>
+          <option ${e.deliverable_type==="IG Reel"?"selected":""}>IG Reel</option>
+          <option ${e.deliverable_type==="IG Story"?"selected":""}>IG Story</option>
+          <option ${e.deliverable_type==="IG Feed"?"selected":""}>IG Feed</option>
+          <option ${e.deliverable_type==="TikTok"?"selected":""}>TikTok</option>
+        </select>
+      </div>
+      <div class="fld"><label>Usage</label>
+        <select id="lpf-usage">
+          <option value="">—</option>
+          <option ${e.usage==="Organic (30 days)"?"selected":""}>Organic (30 days)</option>
+          <option ${e.usage==="Baked in Paid (30 days)"?"selected":""}>Baked in Paid (30 days)</option>
+          <option ${e.usage==="Pre-Negotiated Paid (30 days)"?"selected":""}>Pre-Negotiated Paid (30 days)</option>
+          <option ${e.usage==="Other"?"selected":""}>Other</option>
+        </select>
+      </div>
       <div class="fld"><label>Final Rate ($)</label><input type="number" id="lpf-rate" value="${e.final_rate||""}"></div>
-      <div class="fld"><label>COGs ($)</label><input type="number" id="lpf-cogs" value="${e.cogs||""}"></div>
-      <div class="fld"><label>Total Cost ($)</label><input type="number" id="lpf-cost" value="${e.total_cost||""}"></div>
     </div>
     <div class="fld"><label>Live Link</label><input id="lpf-link" value="${esc(e.live_link||"")}"></div>
     <div class="fld"><label>UTM Link</label><input id="lpf-utm" value="${esc(e.utm_link||"")}"></div>
@@ -1377,27 +1406,20 @@ async function openLivePostModal(existing) {
     </div>
   `, async ()=>{
     const n = id => parseFloat($(id)?.value)||null;
-    await (isEdit ? apiPatch(`/api/live_posts/${existing.id}`, {
+    const lpPayload = {
       influencer_id: parseInt($("lpf-inf").value),
       live_date: $("lpf-date").value||null,
       campaign: $("lpf-campaign").value.trim(),
-      final_rate: n("lpf-rate"), cogs: n("lpf-cogs"), total_cost: n("lpf-cost"),
+      deliverable_type: $("lpf-del").value,
+      usage: $("lpf-usage").value,
+      final_rate: n("lpf-rate"), cogs: n("lpf-cogs"),
       live_link: $("lpf-link").value.trim(), utm_link: $("lpf-utm").value.trim(),
       discount_code: $("lpf-code").value.trim(), ig_spark_code: $("lpf-ig-spark").value.trim(),
       tt_spark_code: $("lpf-tt-spark").value.trim(), paid_spend: n("lpf-paid-spend"),
       total_views: n("lpf-views"), likes: n("lpf-likes"), comments: n("lpf-comments"),
       shares: n("lpf-shares"), saves: n("lpf-saves"),
-    }) : apiPost("/api/live_posts", {
-      influencer_id: parseInt($("lpf-inf").value),
-      live_date: $("lpf-date").value||null,
-      campaign: $("lpf-campaign").value.trim(),
-      final_rate: n("lpf-rate"), cogs: n("lpf-cogs"), total_cost: n("lpf-cost"),
-      live_link: $("lpf-link").value.trim(), utm_link: $("lpf-utm").value.trim(),
-      discount_code: $("lpf-code").value.trim(), ig_spark_code: $("lpf-ig-spark").value.trim(),
-      tt_spark_code: $("lpf-tt-spark").value.trim(), paid_spend: n("lpf-paid-spend"),
-      total_views: n("lpf-views"), likes: n("lpf-likes"), comments: n("lpf-comments"),
-      shares: n("lpf-shares"), saves: n("lpf-saves"),
-    }));
+    };
+    await (isEdit ? apiPatch(`/api/live_posts/${existing.id}`, lpPayload) : apiPost("/api/live_posts", lpPayload));
     closeModal(); loadLivePosts();
   });
 }
@@ -1407,21 +1429,21 @@ async function loadPayments() {
   const data = await apiGet("/api/payment_status");
   const filter = $("pay-filter")?.value;
   let rows = data;
-  if (filter === "paid") rows = rows.filter(r=>r.paid);
-  if (filter === "pending") rows = rows.filter(r=>!r.paid);
+  if (filter === "paid")    rows = rows.filter(r=>r.added_to_quickbooks);
+  if (filter === "pending") rows = rows.filter(r=>!r.added_to_quickbooks);
 
-  const chk = (id, field, val) => `<input type="checkbox" ${val?"checked":""} onchange="updatePayField(${id},'${field}',this.checked)">`;
+  const chk = (id, field, val) => `<input type="checkbox" ${val?"checked":""} onchange="updatePayField(${id},'${field}',this.checked)" style="accent-color:var(--red);width:15px;height:15px;cursor:pointer">`;
   $("pay-body").innerHTML = rows.length ? rows.map(r=>`<tr>
     <td><strong>${esc(r.influencer?.name||"")}</strong></td>
     <td>${esc(r.influencer?.email||"")}</td>
     <td>${fmtD(r.agreed_rate)}</td>
-    <td>${esc(r.deliverables||"")}</td>
+    <td style="font-size:11px">${esc(r.deliverables||"")}</td>
+    <td>${fmtDate(r.live_date)}</td>
     <td>${chk(r.id,"content_live",r.content_live)}</td>
     <td>${fmtDate(r.payment_due_date)}</td>
     <td>${chk(r.id,"w9",r.w9)}</td>
     <td>${chk(r.id,"proper_invoice",r.proper_invoice)}</td>
     <td>${chk(r.id,"added_to_quickbooks",r.added_to_quickbooks)}</td>
-    <td>${chk(r.id,"paid",r.paid)}</td>
     <td>${esc(r.status||"")}</td>
     <td><button class="btn-icon btn-edit-pay" data-id="${r.id}">✏</button></td>
   </tr>`).join("") : `<tr><td colspan="12" class="empty-cell">No payment entries yet.</td></tr>`;
