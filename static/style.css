@@ -123,10 +123,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--r
 .cal-day.is-today { border-color: var(--red); }
 .cal-day.faded { background: transparent; border: none; }
 .cal-day-num { font-weight: 600; margin-bottom: 4px; }
-.cal-entry { border-radius: 3px; padding: 2px 5px; margin-bottom: 2px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cal-entry-live-pending  { background: var(--red); color: #fff; }
-.cal-entry-live-approved { background: var(--green); color: #fff; }
-.cal-entry-due           { background: #5b6ee8; color: #fff; }
+.cal-entry { display: inline-block; border-radius: 3px; padding: 1px 5px; margin: 1px 2px 1px 0; font-size: 9px; font-weight: 600; letter-spacing: .2px; cursor: pointer; }
+.cal-entry-live-pending  { background: var(--red);    color: #fff; }
+.cal-entry-live-approved { background: var(--green);  color: #fff; }
+.cal-entry-due           { background: #5b6ee8;       color: #fff; }
 
 /* ── KPI grid ── */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }

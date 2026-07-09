@@ -421,15 +421,15 @@ function openInfluencerModal(existing) {
 const OUTREACH_STATUSES = ["Not Outreached","Outreached","Followed Up 1x","Followed Up 2x","Interested","Passed","Not Responsive","Conflicted Out"];
 
 async function loadOutreach() {
+  // Always fetch all paid_plan records (not just in_paid_plan=true) so deliverables persist
   const [data, planData] = await Promise.all([
     apiGet("/api/outreach"),
-    ppRows.length ? Promise.resolve(ppRows) : apiGet("/api/paid_plan"),
+    apiGet("/api/paid_plan/all"),
   ]);
-  if (!ppRows.length) ppRows = planData;
 
   // Build map: influencer_id → plan record
   const planMap = {};
-  ppRows.forEach(p => { planMap[p.influencer_id] = p; });
+  planData.forEach(p => { planMap[p.influencer_id] = p; });
 
   const search = $("or-search")?.value.toLowerCase() || "";
   const status = $("or-filter-status")?.value || "";
@@ -487,14 +487,14 @@ async function loadOutreach() {
 
   // Helper: create or update paid_plan record with deliverable qtys
   const savePlanQty = async (infId, field, value) => {
-    const plan = ppRows.find(p => p.influencer_id === parseInt(infId));
+    const plan = planData.find(p => p.influencer_id === parseInt(infId));
     const qty  = parseInt(value) || 0;
     if (plan?.id) {
       await apiPatch(`/api/paid_plan/${plan.id}`, {[field]: qty});
       plan[field] = qty;
     } else {
       const newPlan = await apiPost("/api/paid_plan", {influencer_id: parseInt(infId), [field]: qty});
-      if (newPlan?.id) ppRows.push({...newPlan, influencer_id: parseInt(infId)});
+      if (newPlan?.id) planData.push({...newPlan, influencer_id: parseInt(infId)});
     }
   };
 
@@ -865,14 +865,13 @@ function renderCalendar() {
       html += `<div class="cal-day ${ds===todayStr?"is-today":""}" data-date="${ds}" style="cursor:pointer">
         <div class="cal-day-num">${d}</div>
         ${es.map(e => {
-          const isDue  = (e.notes||"").includes("type:due");
-          const cls    = isDue ? "cal-entry cal-entry-due"
-                       : e.approved ? "cal-entry cal-entry-live-approved"
-                       : "cal-entry cal-entry-live-pending";
-          const handle = e.influencer?.ig_handle ? "@" + e.influencer.ig_handle : e.influencer?.name || "";
-          const del    = fmtDeliverable(e.deliverable);
-          const icon   = isDue ? "📋" : e.approved ? "✓" : "•";
-          return `<div class="${cls}" title="${esc(handle)}">${esc(del)} ${icon}</div>`;
+          const isDue = (e.notes||"").includes("type:due");
+          const cls   = isDue ? "cal-entry cal-entry-due"
+                      : e.approved ? "cal-entry cal-entry-live-approved"
+                      : "cal-entry cal-entry-live-pending";
+          const del   = fmtDeliverable(e.deliverable);
+          const name  = e.influencer?.name || e.influencer?.ig_handle || "";
+          return `<div class="${cls}" title="${esc(name)}">${esc(del)}</div>`;
         }).join("")}
       </div>`;
     }
@@ -1035,7 +1034,7 @@ async function syncCalendarEntry(crId, infId, delType, liveDate, dueDate, approv
     try { calRows = await apiGet("/api/content_calendar"); } catch {}
   }
   const delQty = {
-    ig_feed:  (delType||"").includes("In-Feed") ? 1 : 0,
+    ig_feed:  (delType||"").includes("Feed") ? 1 : 0,
     ig_reel:  (delType||"").includes("Reel")    ? 1 : 0,
     ig_story: (delType||"").includes("Story")   ? 1 : 0,
     tiktok:   (delType||"").includes("TikTok")  ? 1 : 0,
@@ -1083,12 +1082,16 @@ async function syncCalendarEntry(crId, infId, delType, liveDate, dueDate, approv
   if (currentTab === "content-cal") renderCalendar();
 }
 
+const crExpandedGroups = new Set(); // persists across tab switches
+
 window.toggleCRGroup = (groupKey, parentTr) => {
   const subs = document.querySelectorAll(`.cr-sub-row[data-group="${groupKey}"]`);
   const isHidden = subs.length && subs[0].style.display === 'none';
   subs.forEach(r => r.style.display = isHidden ? '' : 'none');
   const arrow = parentTr?.querySelector('.cr-arrow');
   if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
+  if (isHidden) crExpandedGroups.add(groupKey);
+  else crExpandedGroups.delete(groupKey);
 };
 
 // Helper: auto-create N Content Review entries per deliverable type when Locked
@@ -1133,12 +1136,13 @@ async function loadContentReview() {
     const inf = group.inf;
 
     // Parent row — flat string concat to avoid nested template literal parsing issues
-    const groupKey = "crg-" + group.infId;
+    const groupKey   = "crg-" + group.infId;
+    const isExpanded = crExpandedGroups.has(groupKey);
     const igLink = inf.ig_handle ? ('<a href="https://instagram.com/' + esc(inf.ig_handle) + '" target="_blank" style="color:var(--red);font-size:12px">@' + esc(inf.ig_handle) + '</a>') : "—";
     const ttLink = inf.tt_handle ? ('<a href="https://tiktok.com/@' + esc(inf.tt_handle) + '" target="_blank" style="color:var(--red);font-size:12px">@' + esc(inf.tt_handle) + '</a>') : "—";
     const tierBadge = inf.tier ? ('<span class="badge badge-int">' + esc(inf.tier) + '</span>') : "—";
     const parentRow = '<tr class="cr-parent-row" data-group="' + groupKey + '" style="background:var(--panel2);border-top:2px solid var(--border);cursor:pointer" onclick="toggleCRGroup(\'' + groupKey + '\',this)">'
-      + '<td style="padding-left:12px;font-size:12px;white-space:nowrap"><span class="cr-arrow" style="margin-right:6px">▶</span><button class="btn-sec btn-add-cr-del" data-inf-id="' + group.infId + '" style="padding:2px 8px;font-size:10px" onclick="event.stopPropagation()">+ Add</button></td>'
+      + '<td style="padding-left:12px;font-size:12px;white-space:nowrap"><span class="cr-arrow" style="margin-right:6px">' + (isExpanded ? '▼' : '▶') + '</span><button class="btn-sec btn-add-cr-del" data-inf-id="' + group.infId + '" style="padding:2px 8px;font-size:10px" onclick="event.stopPropagation()">+ Add</button></td>'
       + '<td style="white-space:nowrap"><strong>' + esc(inf.name||"") + '</strong></td>'
       + '<td>' + igLink + '</td>'
       + '<td>' + ttLink + '</td>'
@@ -1150,8 +1154,8 @@ async function loadContentReview() {
       + '<td colspan="' + (NCOLS - 9) + '"></td>'
       + '</tr>';
 
-    // Sub-rows — start hidden, expand on parent row click
-    const subRows = group.records.map(r => `<tr class="cr-sub-row" data-group="${groupKey}" style="display:none">
+    // Sub-rows — restore expanded state if group was previously open
+    const subRows = group.records.map(r => `<tr class="cr-sub-row" data-group="${groupKey}" style="${isExpanded ? "" : "display:none"}">`
       <td>
         <select class="cr-status" data-id="${r.id}" style="${iS};min-width:130px;font-size:10px">
           <option value="">—</option>

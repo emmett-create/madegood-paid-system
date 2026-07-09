@@ -223,6 +223,11 @@ async def get_paid_plan():
         })
     return result
 
+@app.get("/api/paid_plan/all")
+async def get_paid_plan_all():
+    """Returns all paid_plan records regardless of in_paid_plan status — used by Outreach"""
+    return await sb_get("paid_plan", f"?client=eq.{config.CLIENT}&order=created_at.asc")
+
 @app.post("/api/paid_plan")
 async def add_paid_plan(req: dict):
     check_auth(req.pop("password", None))
@@ -263,6 +268,9 @@ async def get_outreach():
                 seen[key] = r  # replace rejected INT with EXT record
             else:
                 seen[key]["list_type"] = "INT/EXT"
+                # Take the most permissive values from both records
+                if r.get("in_paid_plan"): seen[key]["in_paid_plan"] = True
+                if r.get("client_approved"): seen[key]["client_approved"] = True
         else:
             if not is_rejected_int:
                 seen[key] = r
