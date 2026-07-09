@@ -300,7 +300,7 @@ async def get_content_review():
     influencers = await sb_get("paid_influencers",
         f"?client=eq.{config.CLIENT}"
         f"&select=id,name,ig_handle,ig_url,tt_handle,tt_url,"
-        f"ig_followers,tt_followers,tier,vertical,archetype")
+        f"ig_followers,tt_followers,tier,vertical,archetype,campaign,location,gender")
     inf_map = {i["id"]: i for i in influencers}
     for r in rows:
         r["influencer"] = inf_map.get(r["influencer_id"], {})

@@ -1007,6 +1007,14 @@ function ppDeliverableSummary(plan) {
 const CR_CAMPAIGNS = ["A8 Paid Influencers", "MadeGood Paid Influencers", "Shipping & PR Mailers"];
 const CR_STATUSES  = ["New! Needs Client Review", "Client Reviewed: Approved", "Client Reviewed: Needs Edits"];
 
+window.toggleCRGroup = (groupKey, parentTr) => {
+  const subs = document.querySelectorAll(`.cr-sub-row[data-group="${groupKey}"]`);
+  const isHidden = subs.length && subs[0].style.display === 'none';
+  subs.forEach(r => r.style.display = isHidden ? '' : 'none');
+  const arrow = parentTr?.querySelector('.cr-arrow');
+  if (arrow) arrow.textContent = isHidden ? '▼' : '▶';
+};
+
 // Helper: auto-create N Content Review entries per deliverable type when Locked
 async function autoCreateContentReviewEntries(influencerId, plan) {
   const existing = await apiGet("/api/content_review");
@@ -1048,22 +1056,26 @@ async function loadContentReview() {
   $("cr-body").innerHTML = Object.values(groups).length ? Object.values(groups).map(group => {
     const inf = group.inf;
 
-    // Parent row — creator info aligned with column headers
-    const parentRow = `<tr style="background:var(--panel2);border-top:2px solid var(--border)">
-      <td></td>
-      <td style="white-space:nowrap"><strong>${esc(inf.name||"")}</strong></td>
-      <td>${inf.ig_handle ? `<a href="${esc(inf.ig_url||`https://instagram.com/${inf.ig_handle}`)}" target="_blank" style="color:var(--red);font-size:12px">@${esc(inf.ig_handle)}</a>` : "—"}</td>
-      <td>${inf.tt_handle ? `<a href="${esc(inf.tt_url||`https://tiktok.com/@${inf.tt_handle}`)}" target="_blank" style="color:var(--red);font-size:12px">@${esc(inf.tt_handle)}</a>` : "—"}</td>
-      <td style="color:var(--dim);font-size:11px">${inf.ig_followers ? Number(inf.ig_followers).toLocaleString() : "—"}</td>
-      <td style="color:var(--dim);font-size:11px">${inf.tt_followers ? Number(inf.tt_followers).toLocaleString() : "—"}</td>
-      <td>${inf.tier ? `<span class="badge badge-int">${esc(inf.tier)}</span>` : "—"}</td>
-      <td style="font-size:11px;color:var(--dim)">${esc(inf.vertical||inf.archetype||"")}</td>
-      <td><button class="btn-sec btn-add-cr-del" data-inf-id="${group.infId}" style="padding:3px 10px;font-size:11px">+ Add</button></td>
-      <td colspan="${NCOLS - 9}"></td>
-    </tr>`;
+    // Parent row — flat string concat to avoid nested template literal parsing issues
+    const groupKey = "crg-" + group.infId;
+    const igLink = inf.ig_handle ? ('<a href="https://instagram.com/' + esc(inf.ig_handle) + '" target="_blank" style="color:var(--red);font-size:12px">@' + esc(inf.ig_handle) + '</a>') : "—";
+    const ttLink = inf.tt_handle ? ('<a href="https://tiktok.com/@' + esc(inf.tt_handle) + '" target="_blank" style="color:var(--red);font-size:12px">@' + esc(inf.tt_handle) + '</a>') : "—";
+    const tierBadge = inf.tier ? ('<span class="badge badge-int">' + esc(inf.tier) + '</span>') : "—";
+    const parentRow = '<tr class="cr-parent-row" data-group="' + groupKey + '" style="background:var(--panel2);border-top:2px solid var(--border);cursor:pointer" onclick="toggleCRGroup(\'' + groupKey + '\',this)">'
+      + '<td style="padding-left:12px;font-size:12px;white-space:nowrap"><span class="cr-arrow" style="margin-right:6px">▶</span><button class="btn-sec btn-add-cr-del" data-inf-id="' + group.infId + '" style="padding:2px 8px;font-size:10px" onclick="event.stopPropagation()">+ Add</button></td>'
+      + '<td style="white-space:nowrap"><strong>' + esc(inf.name||"") + '</strong></td>'
+      + '<td>' + igLink + '</td>'
+      + '<td>' + ttLink + '</td>'
+      + '<td style="color:var(--dim);font-size:11px">' + fmt(inf.ig_followers) + '</td>'
+      + '<td style="color:var(--dim);font-size:11px">' + fmt(inf.tt_followers) + '</td>'
+      + '<td>' + tierBadge + '</td>'
+      + '<td style="font-size:11px;color:var(--dim)">' + esc(inf.vertical||inf.archetype||"") + '</td>'
+      + '<td style="font-size:11px">' + esc(inf.campaign||"") + '</td>'
+      + '<td colspan="' + (NCOLS - 9) + '"></td>'
+      + '</tr>';
 
-    // Sub-rows — Status in col 1, Campaign in col 9, empty cols 2-8, ↳ in col 10
-    const subRows = group.records.map(r => `<tr>
+    // Sub-rows — start hidden, expand on parent row click
+    const subRows = group.records.map(r => `<tr class="cr-sub-row" data-group="${groupKey}" style="display:none">
       <td>
         <select class="cr-status" data-id="${r.id}" style="${iS};min-width:130px;font-size:10px">
           <option value="">—</option>
