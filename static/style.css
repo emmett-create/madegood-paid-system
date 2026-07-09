@@ -123,7 +123,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--r
 .cal-day.is-today { border-color: var(--red); }
 .cal-day.faded { background: transparent; border: none; }
 .cal-day-num { font-weight: 600; margin-bottom: 4px; }
-.cal-entry { background: var(--red); color: #fff; border-radius: 3px; padding: 2px 5px; margin-bottom: 2px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-entry { border-radius: 3px; padding: 2px 5px; margin-bottom: 2px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-entry-live-pending  { background: var(--red); color: #fff; }
+.cal-entry-live-approved { background: var(--green); color: #fff; }
+.cal-entry-due           { background: #5b6ee8; color: #fff; }
 
 /* ── KPI grid ── */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
@@ -163,6 +166,9 @@ a:hover { text-decoration: underline; }
 /* ── Date picker calendar icon (dark theme fix) ── */
 input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; opacity: .7; }
 input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+/* ── Auto-expanding textarea ── */
+textarea.auto-expand { resize: none; overflow: hidden; min-height: 26px; line-height: 1.35; vertical-align: top; padding-top: 4px; }
 
 /* ── Calendar day selected state ── */
 .cal-day.selected { border-color: var(--blue); background: rgba(88,166,255,.08); }

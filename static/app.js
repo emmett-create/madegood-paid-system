@@ -864,7 +864,16 @@ function renderCalendar() {
       const es = byDay[ds]||[];
       html += `<div class="cal-day ${ds===todayStr?"is-today":""}" data-date="${ds}" style="cursor:pointer">
         <div class="cal-day-num">${d}</div>
-        ${es.map(e=>`<div class="cal-entry">@${esc(e.influencer?.ig_handle||e.influencer?.name||"")} · ${fmtDeliverable(e.deliverable)}</div>`).join("")}
+        ${es.map(e => {
+          const isDue  = (e.notes||"").includes("type:due");
+          const cls    = isDue ? "cal-entry cal-entry-due"
+                       : e.approved ? "cal-entry cal-entry-live-approved"
+                       : "cal-entry cal-entry-live-pending";
+          const handle = e.influencer?.ig_handle ? "@" + e.influencer.ig_handle : e.influencer?.name || "";
+          const del    = fmtDeliverable(e.deliverable);
+          const icon   = isDue ? "📋" : e.approved ? "✓" : "•";
+          return `<div class="${cls}" title="${esc(handle)}">${esc(del)} ${icon}</div>`;
+        }).join("")}
       </div>`;
     }
     $("cal-days").innerHTML = html;
@@ -882,16 +891,29 @@ function renderCalendar() {
         if (!entries.length) {
           $("cal-detail-body").innerHTML = `<span style="color:var(--dim);font-size:12px">No entries for this day.</span>`;
         } else {
-          $("cal-detail-body").innerHTML = entries.map(e => `
-            <div class="cal-detail-entry">
-              <div class="cal-detail-creator">@${esc(e.influencer?.ig_handle||e.influencer?.name||"Unknown")}</div>
+          $("cal-detail-body").innerHTML = entries.map(e => {
+            const inf    = e.influencer || {};
+            const isDue  = (e.notes||"").includes("type:due");
+            const typeLabel = isDue
+              ? `<span style="color:#5b6ee8;font-weight:600;font-size:11px">📋 Draft Due</span>`
+              : e.approved
+                ? `<span style="color:var(--green);font-weight:600;font-size:11px">✓ Going Live</span>`
+                : `<span style="color:var(--red);font-weight:600;font-size:11px">• Pending Approval</span>`;
+            const igLink = inf.ig_handle ? `<a href="https://instagram.com/${esc(inf.ig_handle)}" target="_blank" style="color:var(--red)">@${esc(inf.ig_handle)}</a>` : "";
+            const ttLink = inf.tt_handle ? `<a href="https://tiktok.com/@${esc(inf.tt_handle)}" target="_blank" style="color:var(--red)">@${esc(inf.tt_handle)}</a>` : "";
+            return `<div class="cal-detail-entry">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                <div class="cal-detail-creator">${esc(inf.name||"Unknown")}</div>
+                ${typeLabel}
+              </div>
               <div class="cal-detail-meta">
+                ${igLink ? `<span>IG: ${igLink}</span>` : ""}
+                ${ttLink ? `<span>TT: ${ttLink}</span>` : ""}
                 <span><strong>${fmtDeliverable(e.deliverable)}</strong></span>
                 ${e.usage ? `<span>Usage: <strong>${esc(e.usage)}</strong></span>` : ""}
-                <span>Collab: <strong>${e.collab ? "Yes" : "No"}</strong></span>
-                ${e.notes ? `<span>Notes: <strong>${esc(e.notes)}</strong></span>` : ""}
               </div>
-            </div>`).join("");
+            </div>`;
+          }).join("");
         }
         $("cal-detail").classList.remove("hidden");
       });
@@ -1007,6 +1029,60 @@ function ppDeliverableSummary(plan) {
 const CR_CAMPAIGNS = ["A8 Paid Influencers", "MadeGood Paid Influencers", "Shipping & PR Mailers"];
 const CR_STATUSES  = ["New! Needs Client Review", "Client Reviewed: Approved", "Client Reviewed: Needs Edits"];
 
+// Sync a content_review record's dates to the Content Calendar
+async function syncCalendarEntry(crId, infId, delType, liveDate, dueDate, approved) {
+  if (!calRows.length) {
+    try { calRows = await apiGet("/api/content_calendar"); } catch {}
+  }
+  const delQty = {
+    ig_feed:  (delType||"").includes("In-Feed") ? 1 : 0,
+    ig_reel:  (delType||"").includes("Reel")    ? 1 : 0,
+    ig_story: (delType||"").includes("Story")   ? 1 : 0,
+    tiktok:   (delType||"").includes("TikTok")  ? 1 : 0,
+  };
+  const noteKey = id => `cr:${id}`;
+
+  // Sync live date entry
+  const liveEntry = calRows.find(c => c.content_review_id === crId && (c.notes||"").includes("type:live"));
+  if (liveDate) {
+    if (liveEntry) {
+      await apiPatch(`/api/content_calendar/${liveEntry.id}`, {scheduled_date: liveDate, approved});
+    } else {
+      await apiPost("/api/content_calendar", {
+        influencer_id:    infId,
+        scheduled_date:   liveDate,
+        deliverable:      JSON.stringify(delQty),
+        notes:            `${noteKey(crId)}|type:live`,
+        content_review_id: crId,
+        approved,
+        collab: false,
+      });
+    }
+  }
+
+  // Sync content due date entry (blue)
+  const dueEntry = calRows.find(c => c.content_review_id === crId && (c.notes||"").includes("type:due"));
+  if (dueDate) {
+    if (dueEntry) {
+      await apiPatch(`/api/content_calendar/${dueEntry.id}`, {scheduled_date: dueDate});
+    } else {
+      await apiPost("/api/content_calendar", {
+        influencer_id:    infId,
+        scheduled_date:   dueDate,
+        deliverable:      JSON.stringify(delQty),
+        notes:            `${noteKey(crId)}|type:due`,
+        content_review_id: crId,
+        approved: false,
+        collab: false,
+      });
+    }
+  }
+
+  // Refresh calendar rows so next sync is accurate
+  try { calRows = await apiGet("/api/content_calendar"); } catch {}
+  if (currentTab === "content-cal") renderCalendar();
+}
+
 window.toggleCRGroup = (groupKey, parentTr) => {
   const subs = document.querySelectorAll(`.cr-sub-row[data-group="${groupKey}"]`);
   const isHidden = subs.length && subs[0].style.display === 'none';
@@ -1093,28 +1169,28 @@ async function loadContentReview() {
       <td style="white-space:nowrap;font-weight:600;font-size:12px">${esc(r.deliverable_type||"—")}</td>
       <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:110px"></td>
       <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:110px"></td>
-      <td><input class="cr-concept" data-id="${r.id}" value="${esc(r.concept||"")}" placeholder="Concept" style="${iS};min-width:110px"></td>
-      <td><input class="cr-concept-fbk" data-id="${r.id}" value="${esc(r.concept_feedback||"")}" placeholder="Concept feedback" style="${iS};min-width:110px"></td>
+      <td><textarea class="cr-concept auto-expand" data-id="${r.id}" placeholder="Concept" style="${iS};min-width:110px">${esc(r.concept||"")}</textarea></td>
+      <td><textarea class="cr-concept-fbk auto-expand" data-id="${r.id}" placeholder="Concept feedback" style="${iS};min-width:110px">${esc(r.concept_feedback||"")}</textarea></td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
           <input class="cr-cv1" data-id="${r.id}" value="${esc(r.content_v1||"")}" placeholder="Link…" style="${iS};min-width:80px">
           ${r.content_v1 ? `<a href="${esc(r.content_v1)}" target="_blank" style="color:var(--red);font-size:12px;flex-shrink:0">↗</a>` : ""}
         </div>
       </td>
-      <td><input class="cr-cap1" data-id="${r.id}" value="${esc(r.caption_v1||"")}" placeholder="Caption" style="${iS};min-width:90px"></td>
-      <td><input class="cr-af1" data-id="${r.id}" value="${esc(r.a8_feedback_v1||"")}" placeholder="A8 notes" style="${iS};min-width:90px"></td>
-      <td style="background:rgba(202,1,0,.04)"><input class="cr-cf1" data-id="${r.id}" value="${esc(r.client_feedback_v1||"")}" placeholder="Client feedback" style="${iS};min-width:110px"></td>
+      <td><textarea class="cr-cap1 auto-expand" data-id="${r.id}" placeholder="Caption" style="${iS};min-width:90px">${esc(r.caption_v1||"")}</textarea></td>
+      <td><textarea class="cr-af1 auto-expand" data-id="${r.id}" placeholder="A8 notes" style="${iS};min-width:90px">${esc(r.a8_feedback_v1||"")}</textarea></td>
+      <td style="background:rgba(202,1,0,.04)"><textarea class="cr-cf1 auto-expand" data-id="${r.id}" placeholder="Client feedback" style="${iS};min-width:110px">${esc(r.client_feedback_v1||"")}</textarea></td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
           <input class="cr-cv2" data-id="${r.id}" value="${esc(r.content_v2||"")}" placeholder="Link…" style="${iS};min-width:80px">
           ${r.content_v2 ? `<a href="${esc(r.content_v2)}" target="_blank" style="color:var(--red);font-size:12px;flex-shrink:0">↗</a>` : ""}
         </div>
       </td>
-      <td><input class="cr-cap2" data-id="${r.id}" value="${esc(r.caption_v2||"")}" placeholder="Caption" style="${iS};min-width:90px"></td>
-      <td><input class="cr-af2" data-id="${r.id}" value="${esc(r.a8_feedback_v2||"")}" placeholder="A8 notes" style="${iS};min-width:90px"></td>
-      <td style="background:rgba(202,1,0,.04)"><input class="cr-cf2" data-id="${r.id}" value="${esc(r.client_feedback_v2||"")}" placeholder="Client feedback" style="${iS};min-width:110px"></td>
+      <td><textarea class="cr-cap2 auto-expand" data-id="${r.id}" placeholder="Caption" style="${iS};min-width:90px">${esc(r.caption_v2||"")}</textarea></td>
+      <td><textarea class="cr-af2 auto-expand" data-id="${r.id}" placeholder="A8 notes" style="${iS};min-width:90px">${esc(r.a8_feedback_v2||"")}</textarea></td>
+      <td style="background:rgba(202,1,0,.04)"><textarea class="cr-cf2 auto-expand" data-id="${r.id}" placeholder="Client feedback" style="${iS};min-width:110px">${esc(r.client_feedback_v2||"")}</textarea></td>
       <td style="text-align:center">
-        <input type="checkbox" class="cr-approved-chk" data-id="${r.id}" data-inf-id="${r.influencer_id}" data-live="${r.live_date||""}" data-del="${esc(r.deliverable_type||"")}" ${r.approved_by_client?"checked":""} style="accent-color:var(--green);width:16px;height:16px;cursor:pointer">
+        <input type="checkbox" class="cr-approved-chk" data-id="${r.id}" data-inf-id="${r.influencer_id}" data-live="${r.live_date||""}" data-due="${r.content_due_date||""}" data-del="${esc(r.deliverable_type||"")}" ${r.approved_by_client?"checked":""} style="accent-color:var(--green);width:16px;height:16px;cursor:pointer">
       </td>
       <td>
         <button class="btn-icon btn-del-cr" data-id="${r.id}" title="Delete" style="color:var(--dim)">✕</button>
@@ -1131,40 +1207,50 @@ async function loadContentReview() {
     );
   wire("cr-status",      "status",            "change");
   wire("cr-campaign",    "campaign",          "change");
-  wire("cr-due",         "content_due_date",  "change");
-  wire("cr-live",        "live_date",         "change");
-  wire("cr-concept",     "concept");
-  wire("cr-concept-fbk", "concept_feedback");
-  wire("cr-cv1",         "content_v1");
-  wire("cr-cap1",        "caption_v1");
-  wire("cr-af1",         "a8_feedback_v1");
-  wire("cr-cf1",         "client_feedback_v1");
-  wire("cr-cv2",         "content_v2");
-  wire("cr-cap2",        "caption_v2");
-  wire("cr-af2",         "a8_feedback_v2");
-  wire("cr-cf2",         "client_feedback_v2");
-
-  // Approved checkbox → patch + create calendar entry
-  document.querySelectorAll(".cr-approved-chk").forEach(cb =>
-    cb.addEventListener("change", async () => {
-      await apiPatch(`/api/content_review/${cb.dataset.id}`, {approved_by_client: cb.checked});
-      if (cb.checked && cb.dataset.live) {
-        const del = cb.dataset.del;
-        await apiPost("/api/content_calendar", {
-          influencer_id:  parseInt(cb.dataset.infId),
-          scheduled_date: cb.dataset.live,
-          deliverable:    JSON.stringify({
-            ig_feed:  del.includes("In-Feed") ? 1 : 0,
-            ig_reel:  del.includes("Reel")    ? 1 : 0,
-            ig_story: del.includes("Story")   ? 1 : 0,
-            tiktok:   del.includes("TikTok")  ? 1 : 0,
-          }),
-          approved: true,
-          collab:   false,
-        });
-      }
+  // Due + live date wires — also sync to calendar
+  document.querySelectorAll(".cr-due").forEach(el =>
+    el.addEventListener("change", async () => {
+      await apiPatch(`/api/content_review/${el.dataset.id}`, {content_due_date: el.value || null});
+      const r = rows.find(x => String(x.id) === el.dataset.id);
+      if (r) syncCalendarEntry(r.id, r.influencer_id, r.deliverable_type, r.live_date, el.value, r.approved_by_client);
     })
   );
+  document.querySelectorAll(".cr-live").forEach(el =>
+    el.addEventListener("change", async () => {
+      await apiPatch(`/api/content_review/${el.dataset.id}`, {live_date: el.value || null});
+      const r = rows.find(x => String(x.id) === el.dataset.id);
+      if (r) syncCalendarEntry(r.id, r.influencer_id, r.deliverable_type, el.value, r.content_due_date, r.approved_by_client);
+    })
+  );
+  wire("cr-concept",     "concept",          "blur");
+  wire("cr-concept-fbk", "concept_feedback", "blur");
+  wire("cr-cv1",         "content_v1");
+  wire("cr-cap1",        "caption_v1",       "blur");
+  wire("cr-af1",         "a8_feedback_v1",   "blur");
+  wire("cr-cf1",         "client_feedback_v1","blur");
+  wire("cr-cv2",         "content_v2");
+  wire("cr-cap2",        "caption_v2",       "blur");
+  wire("cr-af2",         "a8_feedback_v2",   "blur");
+  wire("cr-cf2",         "client_feedback_v2","blur");
+
+  // Approved checkbox → patch + sync calendar entry to approved/pending
+  document.querySelectorAll(".cr-approved-chk").forEach(cb =>
+    cb.addEventListener("change", async () => {
+      const r = rows.find(x => String(x.id) === cb.dataset.id);
+      await apiPatch(`/api/content_review/${cb.dataset.id}`, {approved_by_client: cb.checked});
+      if (r) syncCalendarEntry(
+        r.id, r.influencer_id, r.deliverable_type,
+        cb.dataset.live, cb.dataset.due, cb.checked
+      );
+    })
+  );
+
+  // Auto-expand textareas
+  document.querySelectorAll("textarea.auto-expand").forEach(el => {
+    const resize = () => { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; };
+    el.addEventListener("input", resize);
+    resize(); // size on load
+  });
 
   // + Add Deliverable button
   document.querySelectorAll(".btn-add-cr-del").forEach(b =>
