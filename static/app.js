@@ -1155,7 +1155,7 @@ async function loadContentReview() {
       + '</tr>';
 
     // Sub-rows — restore expanded state if group was previously open
-    const subRows = group.records.map(r => `<tr class="cr-sub-row" data-group="${groupKey}" style="${isExpanded ? "" : "display:none"}">`
+    const subRows = group.records.map(r => `<tr class="cr-sub-row" data-group="${groupKey}" style="${isExpanded ? "" : "display:none"}">
       <td>
         <select class="cr-status" data-id="${r.id}" style="${iS};min-width:130px;font-size:10px">
           <option value="">—</option>
