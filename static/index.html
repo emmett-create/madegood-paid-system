@@ -65,6 +65,25 @@
           </div>
         </div>
         <div id="ml-summary" class="summary-bar"></div>
+        <!-- Tally bar -->
+        <div id="ml-tally" style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+            <span style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--dim)">View by</span>
+            <select id="ml-tally-dim" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 10px;font-size:12px">
+              <option value="vertical">Vertical / Archetype</option>
+              <option value="tier">Tier</option>
+              <option value="gender">Gender</option>
+              <option value="campaign">Campaign</option>
+            </select>
+            <select id="ml-tally-filter-dim" style="background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:6px;padding:4px 10px;font-size:12px">
+              <option value="">Filter within…</option>
+            </select>
+            <select id="ml-tally-filter-val" style="background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:6px;padding:4px 10px;font-size:12px;display:none">
+              <option value="">All</option>
+            </select>
+          </div>
+          <div id="ml-tally-body" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+        </div>
         <div class="table-wrap">
           <table class="tbl" id="ml-table">
             <thead>

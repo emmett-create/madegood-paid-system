@@ -106,6 +106,33 @@ def auth(req: PwCheck):
     check_auth(req.password)
     return {"ok": True}
 
+@app.post("/api/auth/client")
+def auth_client(req: PwCheck):
+    if config.CLIENT_PASSWORD and req.password != config.CLIENT_PASSWORD:
+        raise HTTPException(status_code=401, detail="Wrong password.")
+    return {"ok": True}
+
+@app.get("/api/client/influencers")
+async def get_client_influencers():
+    """Public-ish endpoint for client view — returns EXT creators only."""
+    return await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&list_type=eq.EXT&order=name.asc"
+        f"&select=id,name,ig_handle,ig_url,tt_handle,tt_url,"
+        f"ig_followers,tt_followers,tier,vertical,archetype,"
+        f"client_approved,client_notes")
+
+@app.patch("/api/client/influencers/{id}")
+async def update_client_influencer(id: int, req: dict):
+    """Allow clients to update only approval fields."""
+    allowed = {k: v for k, v in req.items() if k in ("client_approved", "client_notes")}
+    if not allowed:
+        raise HTTPException(status_code=400, detail="No allowed fields.")
+    return await sb_patch("paid_influencers", id, allowed)
+
+@app.get("/client")
+def client_index():
+    return FileResponse(os.path.join(STATIC, "client.html"))
+
 # ── Master List (Influencers) ─────────────────────────────────────────────────
 class InfluencerIn(BaseModel):
     password: Optional[str] = None

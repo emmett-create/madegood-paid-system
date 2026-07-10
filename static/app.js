@@ -129,6 +129,7 @@ async function loadMasterList() {
   if (activeSort) activeSort.textContent = mlSortDir === "asc" ? " ↑" : " ↓";
 
   $("ml-summary").innerHTML = `<span><strong>${rows.length}</strong> creators</span>`;
+  loadTally();
 
   $("ml-body").innerHTML = rows.length ? rows.map(r => {
     const inExt = currentListType === "INT" && r.ig_handle && extHandles.has(r.ig_handle.toLowerCase());
@@ -287,6 +288,108 @@ async function loadMasterList() {
     })
   );
 }
+
+// ── Tally bar ─────────────────────────────────────────────────────────────────
+let tallyIntData = [], tallyExtData = [];
+
+function renderTally() {
+  const dim       = $("ml-tally-dim")?.value || "vertical";
+  const filterDim = $("ml-tally-filter-dim")?.value || "";
+  const filterVal = $("ml-tally-filter-val")?.value || "";
+
+  const DIMS = ["vertical","tier","gender","campaign"];
+
+  // Populate secondary filter dimension dropdown
+  const filterDimSel = $("ml-tally-filter-dim");
+  if (filterDimSel && filterDimSel.options.length <= 1) {
+    DIMS.filter(d => d !== dim).forEach(d => {
+      const opt = document.createElement("option");
+      opt.value = d; opt.textContent = d.charAt(0).toUpperCase() + d.slice(1);
+      filterDimSel.appendChild(opt);
+    });
+  }
+
+  // Apply secondary filter
+  const filter = (rows) => {
+    if (!filterDim || !filterVal) return rows;
+    return rows.filter(r => (r[filterDim] || "").toLowerCase() === filterVal.toLowerCase());
+  };
+
+  const intRows = filter(tallyIntData);
+  const extRows = filter(tallyExtData);
+
+  // Count by primary dimension
+  const count = (rows, key) => {
+    const c = {};
+    rows.forEach(r => { const v = r[key] || "—"; c[v] = (c[v] || 0) + 1; });
+    return c;
+  };
+
+  const intCounts = count(intRows, dim);
+  const extCounts = count(extRows, dim);
+  const allKeys   = [...new Set([...Object.keys(intCounts), ...Object.keys(extCounts)])].sort();
+
+  const body = $("ml-tally-body");
+  if (!body) return;
+  body.innerHTML = allKeys.map(k => `
+    <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;min-width:120px;text-align:center">
+      <div style="font-size:11px;color:var(--dim);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px" title="${esc(k)}">${esc(k)}</div>
+      <div style="display:flex;gap:8px;justify-content:center;align-items:baseline">
+        <span style="font-size:14px;font-weight:700;color:var(--purple)" title="Internal">${intCounts[k] || 0} <span style="font-size:9px;font-weight:400">INT</span></span>
+        <span style="color:var(--dim);font-size:12px">·</span>
+        <span style="font-size:14px;font-weight:700;color:var(--blue)" title="External">${extCounts[k] || 0} <span style="font-size:9px;font-weight:400">EXT</span></span>
+      </div>
+    </div>`).join("");
+}
+
+async function loadTally() {
+  // Fetch both lists in parallel (always fresh for tally)
+  const [intData, extData] = await Promise.all([
+    apiGet("/api/influencers?list_type=INT"),
+    apiGet("/api/influencers?list_type=EXT"),
+  ]);
+  tallyIntData = intData || [];
+  tallyExtData = extData || [];
+
+  // Populate secondary filter value dropdown based on selected filter dim
+  const filterDim = $("ml-tally-filter-dim")?.value;
+  const filterValSel = $("ml-tally-filter-val");
+  if (filterDim && filterValSel) {
+    const allRows = [...tallyIntData, ...tallyExtData];
+    const vals = [...new Set(allRows.map(r => r[filterDim]).filter(Boolean))].sort();
+    const current = filterValSel.value;
+    filterValSel.innerHTML = `<option value="">All</option>` + vals.map(v => `<option ${v===current?"selected":""}>${esc(v)}</option>`).join("");
+    filterValSel.style.display = filterDim ? "" : "none";
+  }
+
+  renderTally();
+}
+
+$("ml-tally-dim")?.addEventListener("change", () => {
+  // Reset filter dropdowns when primary dimension changes
+  const filterDimSel = $("ml-tally-filter-dim");
+  if (filterDimSel) {
+    while (filterDimSel.options.length > 1) filterDimSel.remove(1);
+    filterDimSel.value = "";
+  }
+  const filterValSel = $("ml-tally-filter-val");
+  if (filterValSel) { filterValSel.innerHTML = `<option value="">All</option>`; filterValSel.style.display = "none"; }
+  loadTally();
+});
+
+$("ml-tally-filter-dim")?.addEventListener("change", () => {
+  const filterDim = $("ml-tally-filter-dim").value;
+  const filterValSel = $("ml-tally-filter-val");
+  if (!filterValSel) return;
+  if (!filterDim) { filterValSel.style.display = "none"; renderTally(); return; }
+  const allRows = [...tallyIntData, ...tallyExtData];
+  const vals = [...new Set(allRows.map(r => r[filterDim]).filter(Boolean))].sort();
+  filterValSel.innerHTML = `<option value="">All</option>` + vals.map(v => `<option>${esc(v)}</option>`).join("");
+  filterValSel.style.display = "";
+  renderTally();
+});
+
+$("ml-tally-filter-val")?.addEventListener("change", renderTally);
 
 // List toggle
 document.querySelectorAll(".list-btn").forEach(btn => {

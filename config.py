@@ -20,7 +20,8 @@ MG_BUDGET_CAMPAIGNS = {
 }
 MG_TOTAL_BUDGET = 500_000
 
-APP_PASSWORD = os.environ.get("APP_PASSWORD", "a8paid123")
+APP_PASSWORD    = os.environ.get("APP_PASSWORD", "a8paid123")
+CLIENT_PASSWORD = os.environ.get("CLIENT_PASSWORD", "client")
 
 # Client identifier (for future multi-client support)
 CLIENT = "madegood"
