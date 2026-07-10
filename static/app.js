@@ -170,8 +170,23 @@ async function loadMasterList() {
   );
   document.querySelectorAll(".btn-del-inf").forEach(b =>
     b.addEventListener("click", async () => {
-      if (!confirm("Delete this creator? This cannot be undone.")) return;
+      const row = rows.find(r => String(r.id) === b.dataset.id);
+      if (!row) return;
+      const label = row.name || row.ig_handle || "this creator";
+      if (!confirm(`Delete ${label} from the ${currentListType} list?`)) return;
+
       await fetch(`/api/influencers/${b.dataset.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+
+      // Check if they also exist in the other list and offer to delete there too
+      if (row.ig_handle) {
+        const otherType = currentListType === "INT" ? "EXT" : "INT";
+        const otherList = await apiGet(`/api/influencers?list_type=${otherType}`);
+        const match = otherList.find(i => i.ig_handle && i.ig_handle.toLowerCase() === row.ig_handle.toLowerCase());
+        if (match && confirm(`${label} also exists in the ${otherType} list. Delete from there too?`)) {
+          await fetch(`/api/influencers/${match.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+        }
+      }
+
       loadMasterList();
     })
   );
@@ -205,13 +220,30 @@ async function loadMasterList() {
     })
   );
 
-  // EXT: client approved checkbox → also sets in_paid_plan
+  // EXT: client approved checkbox → also sets in_paid_plan, cascades on uncheck
   document.querySelectorAll(".ml-client-approved").forEach(cb =>
     cb.addEventListener("change", async () => {
-      await apiPatch(`/api/influencers/${cb.dataset.id}`, {
+      const infId = parseInt(cb.dataset.id);
+      await apiPatch(`/api/influencers/${infId}`, {
         client_approved: cb.checked,
-        in_paid_plan:    cb.checked ? true : undefined,
+        in_paid_plan:    cb.checked ? true : false,
       });
+      // Unchecking → cascade delete Content Review + Calendar entries
+      if (!cb.checked) {
+        try {
+          const existing = await apiGet("/api/content_review");
+          const toDelete = existing.filter(r => r.influencer_id === infId);
+          if (!calRows.length) { try { calRows = await apiGet("/api/content_calendar"); } catch {} }
+          for (const entry of toDelete) {
+            const calEntries = calRows.filter(c => c.content_review_id === entry.id);
+            for (const cal of calEntries) {
+              await fetch(`/api/content_calendar/${cal.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+            }
+            await fetch(`/api/content_review/${entry.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+          }
+          calRows = [];
+        } catch(err) { console.error("Cascade on client uncheck:", err); }
+      }
     })
   );
 
