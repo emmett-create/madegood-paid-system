@@ -637,10 +637,26 @@ async function loadPaidPlan() {
         const newPlan = await apiPost("/api/paid_plan", {influencer_id: row.influencer_id, status: newStatus});
         if (newPlan?.id) row.id = newPlan.id;
       }
-      // If set to Locked, trigger Content Review auto-create per deliverable
+      // If set to Locked → create Content Review entries
       if (newStatus === "Locked") {
         try { await autoCreateContentReviewEntries(row.influencer_id, row); }
         catch(err) { console.error("Could not auto-create Content Review:", err); }
+      }
+      // If changed AWAY from Locked → delete Content Review entries + their calendar entries
+      if (row.status === "Locked" && newStatus !== "Locked") {
+        try {
+          const existing = await apiGet("/api/content_review");
+          const toDelete = existing.filter(r => r.influencer_id === row.influencer_id);
+          for (const entry of toDelete) {
+            // Delete linked calendar entries first
+            const calEntries = calRows.filter(c => c.content_review_id === entry.id);
+            for (const cal of calEntries) {
+              await fetch(`/api/content_calendar/${cal.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+            }
+            await fetch(`/api/content_review/${entry.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+          }
+          calRows = [];
+        } catch(err) { console.error("Cascade delete error:", err); }
       }
     })
   );
@@ -774,10 +790,25 @@ async function openPaidPlanModal(row) {
     if (planId) await apiPatch(`/api/paid_plan/${planId}`, payload);
     else await apiPost("/api/paid_plan", payload);
 
-    // When status set to Locked → auto-create separate Content Review entries per deliverable
+    // Status Locked → create Content Review entries
     if (payload.status === "Locked") {
       try { await autoCreateContentReviewEntries(e.influencer_id, payload); }
       catch(err) { console.error("Could not auto-create Content Review:", err); }
+    }
+    // Changed AWAY from Locked → cascade delete Content Review + Calendar entries
+    if (e.status === "Locked" && payload.status !== "Locked") {
+      try {
+        const existing = await apiGet("/api/content_review");
+        const toDelete = existing.filter(r => r.influencer_id === e.influencer_id);
+        for (const entry of toDelete) {
+          const calEntries = calRows.filter(c => c.content_review_id === entry.id);
+          for (const cal of calEntries) {
+            await fetch(`/api/content_calendar/${cal.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+          }
+          await fetch(`/api/content_review/${entry.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+        }
+        calRows = [];
+      } catch(err) { console.error("Cascade delete error:", err); }
     }
 
     closeModal(); loadPaidPlan();
@@ -947,9 +978,10 @@ function fmtDeliverable(d) {
 }
 
 window.deleteCalEntry = async (id) => {
-  if (!confirm("Delete this entry?")) return;
-  await apiDelete(`/api/content_calendar/${id}?password=${encodeURIComponent(PW)}`);
-  loadCalendar();
+  await fetch(`/api/content_calendar/${id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+  calRows = calRows.filter(r => r.id !== id);
+  renderCalendar();
+  $("cal-detail").classList.add("hidden");
 };
 
 $("btn-add-cal").addEventListener("click", async () => {
@@ -1245,10 +1277,20 @@ async function loadContentReview() {
     cb.addEventListener("change", async () => {
       const r = rows.find(x => String(x.id) === cb.dataset.id);
       await apiPatch(`/api/content_review/${cb.dataset.id}`, {approved_by_client: cb.checked});
-      if (r) syncCalendarEntry(
-        r.id, r.influencer_id, r.deliverable_type,
-        cb.dataset.live, cb.dataset.due, cb.checked
-      );
+      if (cb.checked) {
+        // Approved → sync calendar entries
+        if (r) syncCalendarEntry(r.id, r.influencer_id, r.deliverable_type, cb.dataset.live, cb.dataset.due, true);
+      } else {
+        // Unapproved → delete linked calendar entries
+        const crId = parseInt(cb.dataset.id);
+        if (!calRows.length) { try { calRows = await apiGet("/api/content_calendar"); } catch {} }
+        const toDelete = calRows.filter(c => c.content_review_id === crId);
+        for (const cal of toDelete) {
+          await fetch(`/api/content_calendar/${cal.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+        }
+        calRows = calRows.filter(c => c.content_review_id !== crId);
+        if (currentTab === "content-cal") renderCalendar();
+      }
     })
   );
 

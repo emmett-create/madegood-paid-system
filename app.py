@@ -300,6 +300,12 @@ async def update_content_calendar(id: int, req: dict):
     check_auth(req.pop("password", None))
     return await sb_patch("content_calendar", id, req)
 
+@app.delete("/api/content_calendar/{id}")
+async def delete_content_calendar(id: int, password: str = ""):
+    check_auth(password)
+    await sb_delete("content_calendar", id)
+    return {"ok": True}
+
 # ── Content Review ────────────────────────────────────────────────────────────
 @app.get("/api/content_review")
 async def get_content_review():
