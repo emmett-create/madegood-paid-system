@@ -156,9 +156,19 @@ async def add_influencer(req: InfluencerIn):
 async def update_influencer(id: int, req: dict):
     check_auth(req.pop("password", None))
     result = await sb_patch("paid_influencers", id, req)
-    # When removing from paid plan, cascade-delete the plan record
+    # When removing from paid plan, cascade-delete plan records (check both direct ID and handle match)
     if req.get("in_paid_plan") is False:
-        plans = await sb_get("paid_plan", f"?influencer_id=eq.{id}")
+        inf = await sb_get("paid_influencers", f"?id=eq.{id}&select=ig_handle")
+        handle = (inf[0].get("ig_handle") or "") if inf else ""
+        # Find all influencer IDs with same handle (catches INT/EXT cross-list)
+        if handle:
+            same_handle = await sb_get("paid_influencers",
+                f"?ig_handle=eq.{handle}&select=id")
+            ids = [str(i["id"]) for i in same_handle]
+            plans = await sb_get("paid_plan",
+                f"?influencer_id=in.({',' .join(ids)})")
+        else:
+            plans = await sb_get("paid_plan", f"?influencer_id=eq.{id}")
         for p in plans:
             await sb_delete("paid_plan", p["id"])
     return result
@@ -182,9 +192,22 @@ async def get_paid_plan():
     for p in plans:
         if p["influencer_id"] not in plan_map:
             plan_map[p["influencer_id"]] = p
+
+    # Build handle → plan lookup for cross-list matching (INT plan ↔ EXT creator)
+    all_infs = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&select=id,ig_handle")
+    inf_id_to_handle = {i["id"]: (i.get("ig_handle") or "").lower() for i in all_infs}
+    handle_to_plan = {}
+    for p in plans:
+        handle = inf_id_to_handle.get(p["influencer_id"], "")
+        if handle and handle not in handle_to_plan:
+            handle_to_plan[handle] = p
+
     result = []
     for inf in influencers:
-        p = plan_map.get(inf["id"], {})
+        handle = (inf.get("ig_handle") or "").lower()
+        # First try direct ID match, then fall back to handle match (handles INT↔EXT cross-list plans)
+        p = plan_map.get(inf["id"]) or handle_to_plan.get(handle, {})
         result.append({
             "id": p.get("id"),
             "influencer_id": inf["id"],
