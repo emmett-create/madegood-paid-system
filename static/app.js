@@ -1438,6 +1438,22 @@ async function loadLivePosts() {
 
 $("btn-add-lp").addEventListener("click", ()=>openLivePostModal(null));
 
+$("btn-archive-sync")?.addEventListener("click", async () => {
+  const btn = $("btn-archive-sync");
+  btn.disabled = true; btn.textContent = "Syncing…";
+  try {
+    const result = await apiPost("/api/archive_sync", {});
+    btn.textContent = `↻ Sync from Archive`;
+    btn.disabled = false;
+    alert(`Archive sync complete:\n• ${result.synced} posts updated\n• ${result.created} new posts added\n• ${result.total_archive_posts} total posts found in Archive`);
+    loadLivePosts();
+  } catch(err) {
+    btn.textContent = "↻ Sync from Archive";
+    btn.disabled = false;
+    alert("Sync failed: " + err.message);
+  }
+});
+
 async function openLivePostModal(existing) {
   await getInfluencers();
   const isEdit = !!existing;

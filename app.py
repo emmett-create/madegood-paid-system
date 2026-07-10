@@ -412,6 +412,146 @@ async def delete_budget(id: int, password: str = ""):
     await mg_delete(id)
     return {"ok": True}
 
+# ── Archive Sync ─────────────────────────────────────────────────────────────
+ARCHIVE_URL       = "https://app.archive.com/api/v2"
+ARCHIVE_TOKEN     = os.environ.get("ARCHIVE_APP_TOKEN", "WLeD7XUAgkWeuPUmwHHF5DHLrwZWiX3B")
+ARCHIVE_WORKSPACE = "0cec8ea5-c3b3-4bb1-8083-eaab65719f8e"
+
+async def archive_query(query: str, variables: dict) -> dict:
+    headers = {
+        "Authorization": f"Bearer {ARCHIVE_TOKEN}",
+        "Content-Type": "application/json",
+        "WORKSPACE-ID": ARCHIVE_WORKSPACE,
+    }
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.post(ARCHIVE_URL, json={"query": query, "variables": variables}, headers=headers)
+        r.raise_for_status()
+        return r.json().get("data", {})
+
+def detect_deliverable_type(url: str, platform: str) -> str:
+    """Detect IG Reel / IG Story / IG Feed / TikTok from URL and platform."""
+    url_lower = (url or "").lower()
+    if "tiktok.com" in url_lower or platform == "TIKTOK":
+        return "TikTok"
+    if "/reel/" in url_lower:
+        return "IG Reel"
+    if "/stories/" in url_lower:
+        return "IG Story"
+    return "IG Feed"
+
+@app.post("/api/archive_sync")
+async def archive_sync(req: dict):
+    check_auth(req.pop("password", None))
+
+    # Get all EXT creators with their outreach/plan data
+    ext_creators = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&list_type=eq.EXT"
+        f"&select=id,name,ig_handle,tt_handle,ig_followers,tt_followers,campaign,outreach_usage")
+
+    # Get paid_plan data for final rates
+    plans = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}")
+    plan_map = {}
+    for p in plans:
+        if p["influencer_id"] not in plan_map:
+            plan_map[p["influencer_id"]] = p
+
+    handles = []
+    handle_to_creator = {}
+    for c in ext_creators:
+        for h in [c.get("ig_handle"), c.get("tt_handle")]:
+            if h:
+                key = h.lower().lstrip("@")
+                handles.append(key)
+                handle_to_creator[key] = c
+
+    if not handles:
+        return {"synced": 0, "created": 0, "message": "No EXT creators found"}
+
+    # Query Archive for all posts by these creators
+    q = """
+    query($handles: [String!], $after: String) {
+      items(first: 100, after: $after,
+            filter: { socialProfilesAccountNames: $handles },
+            sorting: { sortKey: PUBLISHED_AT, sortOrder: DESC }) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          originalUrl archivePublicUrl publishedAt
+          socialProfile { accountName platform followers }
+          currentEngagement { impressions likes comments shares saves earnedMediaValue }
+        }
+      }
+    }"""
+
+    all_posts = []
+    after = None
+    while True:
+        data = await archive_query(q, {"handles": handles, "after": after})
+        items_data = data.get("items", {})
+        all_posts.extend(items_data.get("nodes", []))
+        if items_data.get("pageInfo", {}).get("hasNextPage"):
+            after = items_data["pageInfo"]["endCursor"]
+        else:
+            break
+
+    # Existing live posts indexed by URL for dedup
+    live_posts = await sb_get("live_posts", f"?client=eq.{config.CLIENT}")
+    existing_urls = {(lp.get("live_link") or "").rstrip("/") for lp in live_posts if lp.get("live_link")}
+    lp_by_url = {(lp.get("live_link") or "").rstrip("/"): lp for lp in live_posts if lp.get("live_link")}
+
+    synced = 0
+    created = 0
+    for post in all_posts:
+        eng      = post.get("currentEngagement") or {}
+        sp       = post.get("socialProfile") or {}
+        url      = (post.get("originalUrl") or post.get("archivePublicUrl") or "").rstrip("/")
+        handle   = (sp.get("accountName") or "").lower().lstrip("@")
+        creator  = handle_to_creator.get(handle)
+        platform = sp.get("platform", "")
+
+        if not url or not creator:
+            continue
+
+        views    = int(eng.get("impressions") or 0)
+        likes    = int(eng.get("likes") or 0)
+        comments = int(eng.get("comments") or 0)
+        shares   = int(eng.get("shares") or 0)
+        saves    = int(eng.get("saves") or 0)
+        total_eng = likes + comments + shares + saves
+
+        metrics = {
+            "total_views": views, "likes": likes,
+            "comments": comments, "shares": shares, "saves": saves,
+        }
+
+        if url in lp_by_url:
+            # Update existing entry metrics
+            await sb_patch("live_posts", lp_by_url[url]["id"], metrics)
+            synced += 1
+        elif url not in existing_urls and post.get("publishedAt"):
+            # Auto-fill from paid system data
+            plan          = plan_map.get(creator["id"], {})
+            final_rate    = plan.get("accepted_offer")
+            deliverable   = detect_deliverable_type(url, platform)
+            usage         = creator.get("outreach_usage") or plan.get("usage")
+            campaign      = creator.get("campaign") or plan.get("campaign")
+
+            await sb_post("live_posts", {
+                "client":           config.CLIENT,
+                "influencer_id":    creator["id"],
+                "live_date":        post["publishedAt"][:10],
+                "live_link":        url,
+                "campaign":         campaign,
+                "deliverable_type": deliverable,
+                "usage":            usage,
+                "final_rate":       final_rate,
+                "total_cost":       final_rate,  # cost = agreed rate
+                **metrics,
+            })
+            existing_urls.add(url)
+            created += 1
+
+    return {"synced": synced, "created": created, "total_archive_posts": len(all_posts)}
+
 # ── Reporting (live aggregation) ──────────────────────────────────────────────
 @app.get("/api/reporting")
 async def get_reporting(start: str = "", end: str = ""):
