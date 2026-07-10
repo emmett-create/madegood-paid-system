@@ -902,8 +902,11 @@ function renderCalendar() {
             const ttLink = inf.tt_handle ? `<a href="https://tiktok.com/@${esc(inf.tt_handle)}" target="_blank" style="color:var(--red)">@${esc(inf.tt_handle)}</a>` : "";
             return `<div class="cal-detail-entry">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                <div class="cal-detail-creator">${esc(inf.name||"Unknown")}</div>
-                ${typeLabel}
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div class="cal-detail-creator">${esc(inf.name||"Unknown")}</div>
+                  ${typeLabel}
+                </div>
+                <button onclick="deleteCalEntry(${e.id})" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:12px;padding:2px 6px" title="Delete">✕</button>
               </div>
               <div class="cal-detail-meta">
                 ${igLink ? `<span>IG: ${igLink}</span>` : ""}
