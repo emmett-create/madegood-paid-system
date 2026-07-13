@@ -652,8 +652,11 @@ async function loadOutreach() {
     if (plan?.id) {
       await apiPatch(`/api/paid_plan/${plan.id}`, {[field]: qty});
       plan[field] = qty;
-      // Keep handlePlanMap in sync
       if (plan.ig_handle) handlePlanMap[plan.ig_handle] = plan;
+      // If creator is Locked, sync Content Review sub-rows
+      if (plan.status === "Locked") {
+        try { await autoCreateContentReviewEntries(plan.influencer_id, plan); } catch {}
+      }
     } else {
       const newPlan = await apiPost("/api/paid_plan", {influencer_id: parseInt(infId), [field]: qty});
       if (newPlan?.id) {
@@ -663,6 +666,8 @@ async function loadOutreach() {
         if (handle) handlePlanMap[handle] = entry;
       }
     }
+    // Invalidate ppRows so Paid Plan reloads fresh data on next visit
+    ppRows = [];
   };
 
   document.querySelectorAll(".or-status-sel").forEach(s => s.addEventListener("change", () => saveField(s.dataset.id, "outreach_status", s.value)));
