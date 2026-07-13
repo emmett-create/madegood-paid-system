@@ -1063,15 +1063,26 @@ function renderCalendar() {
       const es = byDay[ds]||[];
       html += `<div class="cal-day ${ds===todayStr?"is-today":""}" data-date="${ds}" style="cursor:pointer">
         <div class="cal-day-num">${d}</div>
-        ${es.map(e => {
-          const isDue = (e.notes||"").includes("type:due");
-          const cls   = isDue ? "cal-entry cal-entry-due"
-                      : e.approved ? "cal-entry cal-entry-live-approved"
-                      : "cal-entry cal-entry-live-pending";
-          const del   = fmtDeliverable(e.deliverable);
-          const name  = e.influencer?.name || e.influencer?.ig_handle || "";
-          return `<div class="${cls}" title="${esc(name)}">${esc(del)}</div>`;
-        }).join("")}
+        ${(() => {
+          // Group entries by creator for this day
+          const groups = {};
+          es.forEach(e => {
+            const key = e.influencer_id || e.id;
+            if (!groups[key]) groups[key] = {inf: e.influencer||{}, entries: []};
+            groups[key].entries.push(e);
+          });
+          return Object.values(groups).map(g => {
+            const chips = g.entries.map(e => {
+              const isDue = (e.notes||"").includes("type:due");
+              const cls   = isDue ? "cal-entry cal-entry-due"
+                          : e.approved ? "cal-entry cal-entry-live-approved"
+                          : "cal-entry cal-entry-live-pending";
+              return `<div class="${cls}">${esc(fmtDeliverable(e.deliverable))}</div>`;
+            }).join("");
+            const name = g.inf.name || g.inf.ig_handle || "";
+            return `<div style="margin-bottom:3px">${chips}<div style="font-size:8px;color:var(--dim);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(name)}</div></div>`;
+          }).join("");
+        })()}
       </div>`;
     }
     $("cal-days").innerHTML = html;
