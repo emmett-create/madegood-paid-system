@@ -442,6 +442,8 @@ function calcTier(igFol, ttFol) {
 function openInfluencerModal(existing) {
   const isEdit = !!existing;
   const e = existing || {};
+  const preTier   = e.tier || calcTier(e.ig_followers, e.tt_followers);
+  const showState = !e.location_country || e.location_country === "United States";
   openModal(isEdit ? "Edit Creator" : "Add Creator", `
     <div class="form-grid-2">
       <div class="fld"><label>Name</label><input id="mf-name" value="${esc(e.name||"")}"></div>
@@ -466,7 +468,7 @@ function openInfluencerModal(existing) {
     <div class="form-section">Profile</div>
     <div class="form-grid-3">
       <div class="fld"><label>Tier (auto-fills)</label>
-        <select id="mf-tier"><option value="">—</option><option ${e.tier==="Nano"?"selected":""}>Nano</option><option ${e.tier==="Micro"?"selected":""}>Micro</option><option ${e.tier==="Mid"?"selected":""}>Mid</option><option ${e.tier==="Macro"?"selected":""}>Macro</option><option ${e.tier==="Mega"?"selected":""}>Mega</option></select>
+        <select id="mf-tier"><option value="">—</option><option ${preTier==="Nano"?"selected":""}>Nano</option><option ${preTier==="Micro"?"selected":""}>Micro</option><option ${preTier==="Mid"?"selected":""}>Mid</option><option ${preTier==="Macro"?"selected":""}>Macro</option><option ${preTier==="Mega"?"selected":""}>Mega</option></select>
       </div>
       <div class="fld"><label>Gender</label>
         <select id="mf-gender"><option value="">—</option><option ${e.gender==="Female"?"selected":""}>Female</option><option ${e.gender==="Male"?"selected":""}>Male</option><option ${e.gender==="Non-binary"?"selected":""}>Non-binary</option></select>
@@ -494,7 +496,7 @@ function openInfluencerModal(existing) {
           ${["United States","United Kingdom","Canada","Australia","Mexico","Brazil","France","Germany","Spain","Italy","Netherlands","Sweden","Denmark","Norway","South Korea","Japan","India","Other"].map(c=>`<option ${((e.location_country||"")===c)?'selected':''}>${c}</option>`).join("")}
         </select>
       </div>
-      <div class="fld" id="mf-state-wrap">
+      <div class="fld" id="mf-state-wrap" style="${showState ? "" : "display:none"}">
         <label>State</label>
         <select id="mf-state">
           <option value="">—</option>

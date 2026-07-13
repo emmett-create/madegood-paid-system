@@ -414,6 +414,26 @@
     </div>
   </div>
 
+  <script>
+    // Inline fallback — modal buttons always work even if app.js errors
+    function closeModal() {
+      var ov = document.getElementById('modal-overlay');
+      if (ov) ov.classList.add('hidden');
+      if (window._modalSubmitFn !== undefined) window._modalSubmitFn = null;
+      if (typeof modalSubmitFn !== 'undefined') { try { modalSubmitFn = null; } catch(e) {} }
+    }
+    async function modalDoSave() {
+      var fn = (typeof modalSubmitFn !== 'undefined') ? modalSubmitFn : null;
+      if (!fn) return;
+      var btn = document.getElementById('modal-submit');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      try { await fn(); }
+      catch(err) {
+        alert('Error: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+      }
+    }
+  </script>
   <script src="/app.js"></script>
 </body>
 </html>
