@@ -275,8 +275,15 @@ async def get_paid_plan():
 
 @app.get("/api/paid_plan/all")
 async def get_paid_plan_all():
-    """Returns all paid_plan records regardless of in_paid_plan status — used by Outreach"""
-    return await sb_get("paid_plan", f"?client=eq.{config.CLIENT}&order=created_at.asc")
+    """Returns all paid_plan records with ig_handle for cross-list matching in Outreach"""
+    plans = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}&order=created_at.asc")
+    if plans:
+        ids = ",".join(str(p["influencer_id"]) for p in plans)
+        infs = await sb_get("paid_influencers", f"?id=in.({ids})&select=id,ig_handle")
+        id_to_handle = {i["id"]: (i.get("ig_handle") or "").lower() for i in infs}
+        for p in plans:
+            p["ig_handle"] = id_to_handle.get(p["influencer_id"], "")
+    return plans
 
 @app.post("/api/paid_plan")
 async def add_paid_plan(req: dict):

@@ -574,9 +574,18 @@ async function loadOutreach() {
     apiGet("/api/paid_plan/all"),
   ]);
 
-  // Build map: influencer_id → plan record
+  // Build BOTH id-based and handle-based plan maps for cross-list INT↔EXT matching
   const planMap = {};
-  planData.forEach(p => { planMap[p.influencer_id] = p; });
+  const handlePlanMap = {};
+  planData.forEach(p => {
+    planMap[p.influencer_id] = p;
+    if (p.ig_handle && !handlePlanMap[p.ig_handle]) {
+      handlePlanMap[p.ig_handle] = p;
+    }
+  });
+
+  const getPlan = (r) =>
+    planMap[r.id] || handlePlanMap[(r.ig_handle||"").toLowerCase()] || {};
 
   const search = $("or-search")?.value.toLowerCase() || "";
   const status = $("or-filter-status")?.value || "";
@@ -587,7 +596,7 @@ async function loadOutreach() {
   const iS = "background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:3px 6px;font-size:11px";
 
   $("or-body").innerHTML = rows.length ? rows.map(r => {
-    const plan = planMap[r.id] || {};
+    const plan = getPlan(r);
     return `<tr>
     <td><input class="or-owner" data-id="${r.id}" value="${esc(r.outreach_owner||"")}" placeholder="Owner" style="width:80px;${iS}"></td>
     <td style="white-space:nowrap"><strong>${esc(r.name||"")}</strong></td>
@@ -632,16 +641,25 @@ async function loadOutreach() {
     await apiPatch(`/api/influencers/${id}`, {[field]: value || null});
   };
 
-  // Helper: create or update paid_plan record with deliverable qtys
-  const savePlanQty = async (infId, field, value) => {
-    const plan = planData.find(p => p.influencer_id === parseInt(infId));
-    const qty  = parseInt(value) || 0;
+  // Helper: create or update paid_plan record — tries ID match first, then handle match
+  const savePlanQty = async (infId, igHandle, field, value) => {
+    const handle = (igHandle||"").toLowerCase();
+    const plan   = planData.find(p => p.influencer_id === parseInt(infId))
+                || (handle && planData.find(p => p.ig_handle === handle));
+    const qty    = parseInt(value) || 0;
     if (plan?.id) {
       await apiPatch(`/api/paid_plan/${plan.id}`, {[field]: qty});
       plan[field] = qty;
+      // Keep handlePlanMap in sync
+      if (plan.ig_handle) handlePlanMap[plan.ig_handle] = plan;
     } else {
       const newPlan = await apiPost("/api/paid_plan", {influencer_id: parseInt(infId), [field]: qty});
-      if (newPlan?.id) planData.push({...newPlan, influencer_id: parseInt(infId)});
+      if (newPlan?.id) {
+        const entry = {...newPlan, influencer_id: parseInt(infId), ig_handle: handle};
+        planData.push(entry);
+        planMap[parseInt(infId)] = entry;
+        if (handle) handlePlanMap[handle] = entry;
+      }
     }
   };
 
@@ -651,7 +669,10 @@ async function loadOutreach() {
   document.querySelectorAll(".or-init-rate").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "initial_rate", i.value.trim())));
   document.querySelectorAll(".or-quot-rate").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "quoted_rate", i.value.trim())));
   document.querySelectorAll(".or-usage").forEach(s => s.addEventListener("change", () => saveField(s.dataset.id, "outreach_usage", s.value)));
-  document.querySelectorAll(".or-del").forEach(i => i.addEventListener("change", () => savePlanQty(i.dataset.id, i.dataset.field, i.value)));
+  document.querySelectorAll(".or-del").forEach(i => i.addEventListener("change", () => {
+    const row = rows.find(r => String(r.id) === i.dataset.id);
+    savePlanQty(i.dataset.id, row?.ig_handle, i.dataset.field, i.value);
+  }));
   document.querySelectorAll(".or-date").forEach(i => i.addEventListener("change", () => saveField(i.dataset.id, "outreach_date", i.value)));
   document.querySelectorAll(".or-last").forEach(i => i.addEventListener("change", () => saveField(i.dataset.id, "last_contact", i.value)));
   document.querySelectorAll(".or-notes").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "outreach_notes", i.value.trim())));
