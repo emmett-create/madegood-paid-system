@@ -1843,7 +1843,7 @@ async function loadReporting() {
 $("btn-rep-load")?.addEventListener("click", loadReporting);
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
-let modalSubmitFn = null;
+var modalSubmitFn = null;
 
 // Global save/close — inline onclick on buttons so they always work
 window.closeModal = function() {
