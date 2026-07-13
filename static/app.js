@@ -491,14 +491,14 @@ function openInfluencerModal(existing) {
       <div class="fld"><label>Country</label>
         <select id="mf-country">
           <option value="">—</option>
-          ${["United States","United Kingdom","Canada","Australia","Mexico","Brazil","France","Germany","Spain","Italy","Netherlands","Sweden","Denmark","Norway","South Korea","Japan","India","Other"].map(c=>`<option ${(e.location_country||""===c)?'selected':''}>${c}</option>`).join("")}
+          ${["United States","United Kingdom","Canada","Australia","Mexico","Brazil","France","Germany","Spain","Italy","Netherlands","Sweden","Denmark","Norway","South Korea","Japan","India","Other"].map(c=>`<option ${((e.location_country||"")===c)?'selected':''}>${c}</option>`).join("")}
         </select>
       </div>
       <div class="fld" id="mf-state-wrap">
         <label>State</label>
         <select id="mf-state">
           <option value="">—</option>
-          ${["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"].map(s=>`<option ${(e.location||""===s)?'selected':''}>${s}</option>`).join("")}
+          ${["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"].map(s=>`<option ${((e.location||"")===s)?'selected':''}>${s}</option>`).join("")}
         </select>
       </div>
       <div class="fld"><label>Email</label><input type="email" id="mf-email" value="${esc(e.email||"")}"></div>
@@ -548,10 +548,12 @@ function openInfluencerModal(existing) {
   setTimeout(() => {
     const updateTier = () => {
       const t = calcTier($("mf-ig-fol")?.value, $("mf-tt-fol")?.value);
-      if (t) $("mf-tier").value = t;
+      if (t && $("mf-tier")) $("mf-tier").value = t;
     };
-    $("mf-ig-fol")?.addEventListener("input", updateTier);
-    $("mf-tt-fol")?.addEventListener("input", updateTier);
+    $("mf-ig-fol")?.addEventListener("input",  updateTier);
+    $("mf-ig-fol")?.addEventListener("change", updateTier);
+    $("mf-tt-fol")?.addEventListener("input",  updateTier);
+    $("mf-tt-fol")?.addEventListener("change", updateTier);
     updateTier();
 
     const updateStateVis = () => {

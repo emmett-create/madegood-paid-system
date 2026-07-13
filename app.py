@@ -183,6 +183,26 @@ async def add_influencer(req: InfluencerIn):
 async def update_influencer(id: int, req: dict):
     check_auth(req.pop("password", None))
     result = await sb_patch("paid_influencers", id, req)
+
+    # When setting in_paid_plan=True, migrate any existing plan records from the
+    # matching INT influencer to this EXT influencer so Paid Plan can find them directly
+    if req.get("in_paid_plan") is True:
+        try:
+            inf_rec = await sb_get("paid_influencers", f"?id=eq.{id}&select=ig_handle")
+            if inf_rec:
+                handle = (inf_rec[0].get("ig_handle") or "").strip()
+                if handle:
+                    all_with_handle = await sb_get("paid_influencers",
+                        f"?ig_handle=eq.{handle}&select=id")
+                    other_ids = [str(i["id"]) for i in all_with_handle if i["id"] != id]
+                    if other_ids:
+                        other_plans = await sb_get("paid_plan",
+                            f"?influencer_id=in.({',' .join(other_ids)})")
+                        for p in other_plans:
+                            await sb_patch("paid_plan", p["id"], {"influencer_id": id})
+        except Exception:
+            pass  # non-critical — Paid Plan handle-fallback still works
+
     # When removing from paid plan, cascade-delete plan records (check both direct ID and handle match)
     if req.get("in_paid_plan") is False:
         inf = await sb_get("paid_influencers", f"?id=eq.{id}&select=ig_handle")
