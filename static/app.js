@@ -1869,7 +1869,9 @@ function openModal(title, bodyHtml, onSubmit) {
       <button class="btn-sec" id="modal-cancel" onclick="closeModal()">Cancel</button>
       <button class="btn-pri" id="modal-submit" onclick="modalDoSave()">Save</button>
     </div>`;
-  document.getElementById("modal-overlay").classList.remove("hidden");
+  var ov = document.getElementById("modal-overlay");
+  ov.style.display = "flex";
+  ov.classList.remove("hidden");
   document.getElementById("modal-close").onclick = closeModal;
   modalSubmitFn = onSubmit;
 }

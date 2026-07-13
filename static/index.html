@@ -404,11 +404,11 @@
   </div><!-- /app -->
 
   <!-- Modals rendered by JS -->
-  <div id="modal-overlay" class="modal-overlay hidden" onclick="if(event.target===this)document.getElementById('modal-overlay').classList.add('hidden')">
-    <div class="modal" id="modal-box">
+  <div id="modal-overlay" class="modal-overlay hidden" onclick="if(event.target.id==='modal-overlay'){this.style.display='none';this.classList.add('hidden');}">
+    <div class="modal" id="modal-box" onclick="event.stopPropagation()">
       <div class="modal-hdr">
         <h3 id="modal-title">Add</h3>
-        <button class="modal-x" id="modal-close" onclick="document.getElementById('modal-overlay').classList.add('hidden')">✕</button>
+        <button class="modal-x" id="modal-close" onclick="var o=document.getElementById('modal-overlay');o.style.display='none';o.classList.add('hidden');">✕</button>
       </div>
       <div id="modal-body"></div>
     </div>
@@ -418,7 +418,7 @@
     // Defined before app.js — buttons always work. modalSubmitFn is var in app.js (global).
     function closeModal() {
       var ov = document.getElementById('modal-overlay');
-      if (ov) ov.classList.add('hidden');
+      if (ov) { ov.style.display = 'none'; ov.classList.add('hidden'); }
       if (typeof modalSubmitFn !== 'undefined') modalSubmitFn = null;
     }
     async function modalDoSave() {
