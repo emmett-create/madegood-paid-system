@@ -1843,29 +1843,33 @@ $("btn-rep-load")?.addEventListener("click", loadReporting);
 // ── Modal helpers ─────────────────────────────────────────────────────────────
 let modalSubmitFn = null;
 
-function openModal(title, bodyHtml, onSubmit) {
-  $("modal-title").textContent = title;
-  $("modal-body").innerHTML = bodyHtml + `
-    <div class="modal-footer">
-      <button class="btn-sec" id="modal-cancel">Cancel</button>
-      <button class="btn-pri" id="modal-submit">Save</button>
-    </div>`;
-  $("modal-overlay").classList.remove("hidden");
-  modalSubmitFn = onSubmit;
-  // Use onclick (not addEventListener) to prevent stacking handlers across modal opens
-  $("modal-close").onclick  = closeModal;
-  $("modal-cancel").onclick = closeModal;
-  $("modal-submit").onclick = async () => {
-    const btn = $("modal-submit");
-    btn.disabled = true; btn.textContent = "Saving…";
-    try { await modalSubmitFn(); }
-    catch(err) { alert("Error: " + err.message); btn.disabled=false; btn.textContent="Save"; }
-  };
-}
-
-function closeModal() {
-  $("modal-overlay").classList.add("hidden");
+// Global save/close — inline onclick on buttons so they always work
+window.closeModal = function() {
+  document.getElementById("modal-overlay")?.classList.add("hidden");
   modalSubmitFn = null;
+};
+window.modalDoSave = async function() {
+  if (!modalSubmitFn) return;
+  const btn = document.getElementById("modal-submit");
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+  try { await modalSubmitFn(); }
+  catch(err) {
+    alert("Error: " + err.message);
+    if (btn) { btn.disabled = false; btn.textContent = "Save"; }
+  }
+};
+function closeModal() { window.closeModal(); }
+
+function openModal(title, bodyHtml, onSubmit) {
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-body").innerHTML = bodyHtml + `
+    <div class="modal-footer">
+      <button class="btn-sec" id="modal-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-pri" id="modal-submit" onclick="modalDoSave()">Save</button>
+    </div>`;
+  document.getElementById("modal-overlay").classList.remove("hidden");
+  document.getElementById("modal-close").onclick = closeModal;
+  modalSubmitFn = onSubmit;
 }
 
 // Clicking outside the modal box also closes it
