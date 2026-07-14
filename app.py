@@ -630,7 +630,17 @@ async def archive_sync(req: dict):
             existing_urls.add(url)
             created += 1
 
-    return {"synced": synced, "created": created, "total_archive_posts": len(all_posts)}
+    handles_in_system = list(handle_to_creator.keys())
+    handles_in_posts  = list({(p.get("socialProfile") or {}).get("accountName","").lower().lstrip("@") for p in all_posts if p.get("socialProfile")})
+    matched = [h for h in handles_in_posts if h in handle_to_creator]
+    return {
+        "synced": synced,
+        "created": created,
+        "total_archive_posts": len(all_posts),
+        "creators_in_system": len(handles_in_system),
+        "handles_found_in_archive": handles_in_posts,
+        "handles_matched_to_creators": matched,
+    }
 
 # ── Reporting (live aggregation) ──────────────────────────────────────────────
 @app.get("/api/reporting")
