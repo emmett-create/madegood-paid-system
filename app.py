@@ -119,6 +119,7 @@ async def get_client_influencers():
         f"?client=eq.{config.CLIENT}&list_type=eq.EXT&order=name.asc"
         f"&select=id,name,ig_handle,ig_url,tt_handle,tt_url,"
         f"ig_followers,tt_followers,tier,vertical,archetype,"
+        f"location,location_country,gender,campaign,"
         f"client_approved,client_notes")
 
 @app.patch("/api/client/influencers/{id}")
@@ -520,10 +521,22 @@ def detect_deliverable_type(url: str, platform: str) -> str:
 async def archive_sync(req: dict):
     check_auth(req.pop("password", None))
 
-    # Get all EXT creators with their outreach/plan data
-    ext_creators = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&list_type=eq.EXT"
+    # Get ALL master list creators (both INT and EXT) for handle lookup
+    all_creators = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}"
         f"&select=id,name,ig_handle,tt_handle,ig_followers,tt_followers,campaign,outreach_usage")
+
+    # Build handle → creator map (covers both lists)
+    handle_to_creator = {}
+    for c in all_creators:
+        for h in [c.get("ig_handle"), c.get("tt_handle")]:
+            if h:
+                key = h.lower().lstrip("@")
+                if key not in handle_to_creator:
+                    handle_to_creator[key] = c
+
+    if not handle_to_creator:
+        return {"synced": 0, "created": 0, "message": "No creators in master list"}
 
     # Get paid_plan data for final rates
     plans = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}")
@@ -532,23 +545,11 @@ async def archive_sync(req: dict):
         if p["influencer_id"] not in plan_map:
             plan_map[p["influencer_id"]] = p
 
-    handles = []
-    handle_to_creator = {}
-    for c in ext_creators:
-        for h in [c.get("ig_handle"), c.get("tt_handle")]:
-            if h:
-                key = h.lower().lstrip("@")
-                handles.append(key)
-                handle_to_creator[key] = c
-
-    if not handles:
-        return {"synced": 0, "created": 0, "message": "No EXT creators found"}
-
-    # Query Archive for all posts by these creators
+    # Query ALL content from the MadeGood workspace (no handle filter — more reliable)
+    # Then filter client-side to only creators in the master list
     q = """
-    query($handles: [String!], $after: String) {
+    query($after: String) {
       items(first: 100, after: $after,
-            filter: { socialProfilesAccountNames: $handles },
             sorting: { sortKey: PUBLISHED_AT, sortOrder: DESC }) {
         pageInfo { hasNextPage endCursor }
         nodes {
@@ -562,7 +563,7 @@ async def archive_sync(req: dict):
     all_posts = []
     after = None
     while True:
-        data = await archive_query(q, {"handles": handles, "after": after})
+        data = await archive_query(q, {"after": after})
         items_data = data.get("items", {})
         all_posts.extend(items_data.get("nodes", []))
         if items_data.get("pageInfo", {}).get("hasNextPage"):
@@ -580,11 +581,13 @@ async def archive_sync(req: dict):
     for post in all_posts:
         eng      = post.get("currentEngagement") or {}
         sp       = post.get("socialProfile") or {}
-        url      = (post.get("originalUrl") or post.get("archivePublicUrl") or "").rstrip("/")
+        # Prefer archivePublicUrl (permanent, works for Stories too)
+        url      = (post.get("archivePublicUrl") or post.get("originalUrl") or "").rstrip("/")
         handle   = (sp.get("accountName") or "").lower().lstrip("@")
         creator  = handle_to_creator.get(handle)
         platform = sp.get("platform", "")
 
+        # Skip if no URL or creator not in master list
         if not url or not creator:
             continue
 

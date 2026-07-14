@@ -74,13 +74,17 @@
             <th>Name</th>
             <th>IG Handle</th>
             <th>TT Handle</th>
-            <th>Followers</th>
+            <th>IG Followers</th>
+            <th>TT Followers</th>
             <th>Tier</th>
             <th>Vertical</th>
+            <th>Location</th>
+            <th>Gender</th>
+            <th>Campaign</th>
             <th>Notes</th>
           </tr>
         </thead>
-        <tbody id="cl-body"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+        <tbody id="cl-body"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -123,16 +127,20 @@ function renderCreators() {
   const iS = "background:#F2EDE9;border:1px solid #DDD5CE;color:#1A0000;border-radius:5px;padding:3px 8px;font-size:12px;width:100%";
   document.getElementById("cl-body").innerHTML = rows.length ? rows.map(r => `<tr>
     <td style="text-align:center">
-      <input type="checkbox" class="cl-approved" data-id="${r.id}" ${r.client_approved?"checked":""}>
+      <input type="checkbox" class="cl-approved" data-id="${r.id}" ${r.client_approved?"checked":""} style="accent-color:#CA0100;width:16px;height:16px;cursor:pointer">
     </td>
     <td><strong>${esc(r.name||"")}</strong></td>
-    <td>${r.ig_handle ? `<a href="https://instagram.com/${esc(r.ig_handle)}" target="_blank">@${esc(r.ig_handle)}</a>` : "—"}</td>
-    <td>${r.tt_handle ? `<a href="https://tiktok.com/@${esc(r.tt_handle)}" target="_blank">@${esc(r.tt_handle)}</a>` : "—"}</td>
+    <td>${r.ig_handle ? `<a href="https://instagram.com/${esc(r.ig_handle)}" target="_blank" style="color:#CA0100">@${esc(r.ig_handle)}</a>` : "—"}</td>
+    <td>${r.tt_handle ? `<a href="https://tiktok.com/@${esc(r.tt_handle)}" target="_blank" style="color:#CA0100">@${esc(r.tt_handle)}</a>` : "—"}</td>
     <td style="color:#8a7070">${fmt(r.ig_followers)}</td>
+    <td style="color:#8a7070">${fmt(r.tt_followers)}</td>
     <td>${r.tier ? `<span class="badge badge-int">${esc(r.tier)}</span>` : "—"}</td>
     <td style="font-size:11px">${esc(r.vertical||r.archetype||"")}</td>
+    <td style="font-size:11px;color:#8a7070">${[r.location, r.location_country].filter(Boolean).join(", ")||"—"}</td>
+    <td style="font-size:11px">${esc(r.gender||"—")}</td>
+    <td style="font-size:11px">${esc(r.campaign||"—")}</td>
     <td><input type="text" class="cl-notes" data-id="${r.id}" value="${esc(r.client_notes||"")}" placeholder="Notes…" style="${iS}"></td>
-  </tr>`).join("") : `<tr><td colspan="8" class="empty">No creators yet.</td></tr>`;
+  </tr>`).join("") : `<tr><td colspan="12" class="empty">No creators yet.</td></tr>`;
 
   document.querySelectorAll(".cl-approved").forEach(cb =>
     cb.addEventListener("change", async () => {
