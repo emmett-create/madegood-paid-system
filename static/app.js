@@ -655,10 +655,6 @@ async function loadOutreach() {
       await apiPatch(`/api/paid_plan/${plan.id}`, {[field]: qty});
       plan[field] = qty;
       if (plan.ig_handle) handlePlanMap[plan.ig_handle] = plan;
-      // If creator is Locked, sync Content Review sub-rows
-      if (plan.status === "Locked") {
-        try { await autoCreateContentReviewEntries(plan.influencer_id, plan); } catch {}
-      }
     } else {
       const newPlan = await apiPost("/api/paid_plan", {influencer_id: parseInt(infId), [field]: qty});
       if (newPlan?.id) {
@@ -1320,7 +1316,14 @@ window.toggleCRGroup = (groupKey, parentTr) => {
 // Helper: auto-create N Content Review entries per deliverable type when Locked
 async function autoCreateContentReviewEntries(influencerId, plan) {
   const existing = await apiGet("/api/content_review");
-  const existingForInf = existing.filter(r => r.influencer_id === influencerId);
+
+  // Match by influencerId OR by same ig_handle (handles INT/EXT ID mismatch)
+  const igHandle = (plan.ig_handle || plan.influencer?.ig_handle || "").toLowerCase();
+  const existingForInf = existing.filter(r =>
+    r.influencer_id === influencerId ||
+    (igHandle && (r.influencer?.ig_handle || "").toLowerCase() === igHandle)
+  );
+
   const deliverables = [
     { type: "IG Reel",   qty: plan.ig_reel_qty  || 0 },
     { type: "IG Story",  qty: plan.ig_story_qty || 0 },
@@ -1329,7 +1332,7 @@ async function autoCreateContentReviewEntries(influencerId, plan) {
   ];
   for (const del of deliverables) {
     const existingCount = existingForInf.filter(r => r.deliverable_type === del.type).length;
-    const toAdd = del.qty - existingCount;
+    const toAdd = Math.max(0, del.qty - existingCount);
     for (let i = 0; i < toAdd; i++) {
       await apiPost("/api/content_review", {influencer_id: influencerId, deliverable_type: del.type});
     }
