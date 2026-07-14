@@ -819,9 +819,12 @@ async function loadPaidPlan() {
       if (row.status === "Locked" && newStatus !== "Locked") {
         try {
           const existing = await apiGet("/api/content_review");
-          const toDelete = existing.filter(r => r.influencer_id === row.influencer_id);
+          const rowHandle = (row.influencer?.ig_handle || "").toLowerCase();
+          const toDelete = existing.filter(r =>
+            r.influencer_id === row.influencer_id ||
+            (rowHandle && (r.influencer?.ig_handle || "").toLowerCase() === rowHandle)
+          );
           for (const entry of toDelete) {
-            // Delete linked calendar entries first
             const calEntries = calRows.filter(c => c.content_review_id === entry.id);
             for (const cal of calEntries) {
               await fetch(`/api/content_calendar/${cal.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
@@ -964,15 +967,20 @@ async function openPaidPlanModal(row) {
     else await apiPost("/api/paid_plan", payload);
 
     // Status Locked → create Content Review entries
+    // Pass influencer data so handle-based dedup works correctly
     if (payload.status === "Locked") {
-      try { await autoCreateContentReviewEntries(e.influencer_id, payload); }
+      try { await autoCreateContentReviewEntries(e.influencer_id, {...payload, ig_handle: e.influencer?.ig_handle || "", influencer: e.influencer}); }
       catch(err) { console.error("Could not auto-create Content Review:", err); }
     }
     // Changed AWAY from Locked → cascade delete Content Review + Calendar entries
     if (e.status === "Locked" && payload.status !== "Locked") {
       try {
         const existing = await apiGet("/api/content_review");
-        const toDelete = existing.filter(r => r.influencer_id === e.influencer_id);
+        const eHandle = (e.influencer?.ig_handle || "").toLowerCase();
+        const toDelete = existing.filter(r =>
+          r.influencer_id === e.influencer_id ||
+          (eHandle && (r.influencer?.ig_handle || "").toLowerCase() === eHandle)
+        );
         for (const entry of toDelete) {
           const calEntries = calRows.filter(c => c.content_review_id === entry.id);
           for (const cal of calEntries) {
