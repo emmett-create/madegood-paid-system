@@ -1518,6 +1518,21 @@ async function loadContentReview() {
 $("cr-filter-status")?.addEventListener("change", loadContentReview);
 $("btn-add-cr").addEventListener("click", () => openContentReviewModal(null));
 
+$("btn-cr-cleanup")?.addEventListener("click", async () => {
+  if (!confirm("This will delete extra duplicate rows so each creator only has the number of deliverables their Paid Plan specifies. Continue?")) return;
+  const btn = $("btn-cr-cleanup");
+  btn.disabled = true; btn.textContent = "Cleaning…";
+  try {
+    const res = await apiPost("/api/content_review/cleanup_duplicates", {});
+    alert(`Done! ${res.deleted} duplicate row${res.deleted !== 1 ? "s" : ""} removed.`);
+    loadContentReview();
+  } catch(err) {
+    alert("Error: " + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "Clean Up Duplicates";
+  }
+});
+
 async function openContentReviewModal(existing) {
   await getInfluencers();
   const e = existing || {};
@@ -1612,7 +1627,13 @@ $("btn-archive-sync")?.addEventListener("click", async () => {
     const result = await apiPost("/api/archive_sync", {});
     btn.textContent = `↻ Sync from Archive`;
     btn.disabled = false;
-    alert(`Archive sync complete:\n• ${result.synced} posts updated\n• ${result.created} new posts added\n• ${result.total_archive_posts} total posts found in Archive`);
+    const campInfo = result.total_campaigns_found > 0
+      ? `\n• ${result.total_campaigns_found} Archive campaigns: ${(result.campaign_names||[]).join(", ")}`
+      : `\n• 0 Archive campaigns found (check workspace/token)`;
+    const matchInfo = result.handles_found_in_archive?.length
+      ? `\n• Handles in Archive: ${result.handles_found_in_archive.join(", ")}\n• Matched to creators: ${(result.handles_matched_to_creators||[]).join(", ") || "none"}`
+      : "";
+    alert(`Archive sync complete:\n• ${result.synced} posts updated\n• ${result.created} new posts added\n• ${result.total_archive_posts} total posts found in Archive${campInfo}${matchInfo}`);
     loadLivePosts();
   } catch(err) {
     btn.textContent = "↻ Sync from Archive";

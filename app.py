@@ -415,6 +415,40 @@ async def delete_content_review(id: int, password: str = ""):
     await sb_delete("content_review", id)
     return {"ok": True}
 
+@app.post("/api/content_review/cleanup_duplicates")
+async def cleanup_cr_duplicates(req: dict):
+    check_auth(req.pop("password", None))
+    rows = await sb_get("content_review", f"?client=eq.{config.CLIENT}")
+    infs = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&select=id,ig_handle")
+    inf_map = {i["id"]: (i.get("ig_handle") or "").lower() for i in infs}
+    plans = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}")
+    plan_by_handle: dict = {}
+    for p in plans:
+        handle = inf_map.get(p["influencer_id"], "")
+        if handle and handle not in plan_by_handle:
+            plan_by_handle[handle] = p
+    # Group CR rows by (handle, deliverable_type), oldest first
+    groups: dict = {}
+    for r in sorted(rows, key=lambda x: x["id"]):
+        handle = inf_map.get(r["influencer_id"], str(r["influencer_id"]))
+        key = (handle, r.get("deliverable_type", ""))
+        groups.setdefault(key, []).append(r)
+    deleted = 0
+    for (handle, del_type), entries in groups.items():
+        plan = plan_by_handle.get(handle, {})
+        qty_map = {
+            "IG Reel":  plan.get("ig_reel_qty",  0) or 0,
+            "IG Story": plan.get("ig_story_qty", 0) or 0,
+            "IG Feed":  plan.get("ig_feed_qty",  0) or 0,
+            "TikTok":   plan.get("tt_qty",       0) or 0,
+        }
+        expected = qty_map.get(del_type, 0)
+        for extra in entries[expected:]:
+            await sb_delete("content_review", extra["id"])
+            deleted += 1
+    return {"deleted": deleted}
+
 # ── Live Posts ────────────────────────────────────────────────────────────────
 @app.get("/api/live_posts")
 async def get_live_posts():
@@ -504,7 +538,10 @@ async def archive_query(query: str, variables: dict) -> dict:
     async with httpx.AsyncClient(timeout=30) as c:
         r = await c.post(ARCHIVE_URL, json={"query": query, "variables": variables}, headers=headers)
         r.raise_for_status()
-        return r.json().get("data", {})
+        body = r.json()
+        if "errors" in body and body.get("data") is None:
+            raise Exception(f"Archive GraphQL error: {body['errors']}")
+        return body.get("data") or {}
 
 def detect_deliverable_type(url: str, platform: str) -> str:
     """Detect IG Reel / IG Story / IG Feed / TikTok from URL and platform."""
@@ -653,6 +690,8 @@ async def archive_sync(req: dict):
         "synced": synced,
         "created": created,
         "total_archive_posts": len(all_posts),
+        "total_campaigns_found": len(campaigns),
+        "campaign_names": [c.get("name") for c in campaigns],
         "creators_in_system": len(handles_in_system),
         "handles_found_in_archive": handles_in_posts,
         "handles_matched_to_creators": matched,
