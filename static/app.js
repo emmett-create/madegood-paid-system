@@ -1845,11 +1845,14 @@ $("btn-rep-load")?.addEventListener("click", loadReporting);
 // ── Modal helpers ─────────────────────────────────────────────────────────────
 var modalSubmitFn = null;
 
-// Global save/close — inline onclick on buttons so they always work
-window.closeModal = function() {
-  document.getElementById("modal-overlay")?.classList.add("hidden");
+// Self-contained closeModal — no circular hoisting issue
+function closeModal() {
+  var ov = document.getElementById("modal-overlay");
+  if (ov) { ov.style.display = "none"; ov.classList.add("hidden"); }
   modalSubmitFn = null;
-};
+}
+window.closeModal = closeModal;
+
 window.modalDoSave = async function() {
   if (!modalSubmitFn) return;
   const btn = document.getElementById("modal-submit");
@@ -1860,7 +1863,6 @@ window.modalDoSave = async function() {
     if (btn) { btn.disabled = false; btn.textContent = "Save"; }
   }
 };
-function closeModal() { window.closeModal(); }
 
 function openModal(title, bodyHtml, onSubmit) {
   document.getElementById("modal-title").textContent = title;
