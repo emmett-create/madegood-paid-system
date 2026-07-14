@@ -545,11 +545,21 @@ async def archive_sync(req: dict):
         if p["influencer_id"] not in plan_map:
             plan_map[p["influencer_id"]] = p
 
-    # Query ALL content from the MadeGood workspace (no handle filter — more reliable)
-    # Then filter client-side to only creators in the master list
-    q = """
-    query($after: String) {
+    # Step 1: Get all campaigns in the MadeGood workspace
+    campaigns_q = """
+    query {
+      campaigns(first: 100) {
+        nodes { id name }
+      }
+    }"""
+    campaigns_data = await archive_query(campaigns_q, {})
+    campaigns = campaigns_data.get("campaigns", {}).get("nodes", [])
+
+    # Step 2: Query posts per campaign (campaignsIds filter is confirmed working)
+    items_q = """
+    query($cid: ID!, $after: String) {
       items(first: 100, after: $after,
+            filter: { campaignsIds: [$cid] },
             sorting: { sortKey: PUBLISHED_AT, sortOrder: DESC }) {
         pageInfo { hasNextPage endCursor }
         nodes {
@@ -561,15 +571,21 @@ async def archive_sync(req: dict):
     }"""
 
     all_posts = []
-    after = None
-    while True:
-        data = await archive_query(q, {"after": after})
-        items_data = data.get("items", {})
-        all_posts.extend(items_data.get("nodes", []))
-        if items_data.get("pageInfo", {}).get("hasNextPage"):
-            after = items_data["pageInfo"]["endCursor"]
-        else:
-            break
+    seen_post_urls: set = set()
+    for campaign in campaigns:
+        after = None
+        while True:
+            data = await archive_query(items_q, {"cid": campaign["id"], "after": after})
+            items_data = data.get("items", {})
+            for node in items_data.get("nodes", []):
+                url = (node.get("archivePublicUrl") or node.get("originalUrl") or "").rstrip("/")
+                if url and url not in seen_post_urls:
+                    seen_post_urls.add(url)
+                    all_posts.append(node)
+            if items_data.get("pageInfo", {}).get("hasNextPage"):
+                after = items_data["pageInfo"]["endCursor"]
+            else:
+                break
 
     # Existing live posts indexed by URL for dedup
     live_posts = await sb_get("live_posts", f"?client=eq.{config.CLIENT}")
