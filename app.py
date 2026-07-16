@@ -385,6 +385,23 @@ async def delete_content_calendar(id: int, password: str = ""):
     await sb_delete("content_calendar", id)
     return {"ok": True}
 
+# ── Shared helper: pick the best paid_plan record for a handle ────────────────
+def _best_plan(plans: list, id_to_handle: dict) -> dict:
+    """Returns handle → best plan. Prefers plan with post_details, then highest
+    total qty, then highest id. Handles multiple INT/EXT records per creator."""
+    def score(p: dict):
+        has_pd  = 1 if (p.get("post_details") or {}) else 0
+        qty     = sum((p.get(k) or 0) for k in ["ig_feed_qty","ig_reel_qty","ig_story_qty","tt_qty"])
+        pid     = p.get("id") or 0
+        return (has_pd, qty, pid)
+    best: dict = {}
+    for p in plans:
+        handle = id_to_handle.get(p["influencer_id"], "")
+        if handle:
+            if handle not in best or score(p) > score(best[handle]):
+                best[handle] = p
+    return best
+
 # ── Content Review ────────────────────────────────────────────────────────────
 @app.get("/api/content_review")
 async def get_content_review():
@@ -396,17 +413,11 @@ async def get_content_review():
         f"ig_followers,tt_followers,tier,vertical,archetype,campaign,location,gender")
     inf_map = {i["id"]: i for i in influencers}
 
-    # Build handle → post_details map from paid_plan so existing CR rows
-    # get usage/is_collab even if they were created before those columns existed
     plans = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}")
     all_infs = await sb_get("paid_influencers",
         f"?client=eq.{config.CLIENT}&select=id,ig_handle")
     id_to_handle = {i["id"]: (i.get("ig_handle") or "").lower() for i in all_infs}
-    handle_to_plan: dict = {}
-    for p in plans:
-        handle = id_to_handle.get(p["influencer_id"], "")
-        if handle and handle not in handle_to_plan:
-            handle_to_plan[handle] = p
+    handle_to_plan = _best_plan(plans, id_to_handle)
 
     CR_TYPE_KEY = {"IG Feed": "ig_feed", "IG Reel": "ig_reel",
                    "IG Story": "ig_story", "TikTok": "tt"}
@@ -461,31 +472,32 @@ async def auto_sync_content_review(req: dict):
     return await _sync_content_review()
 
 async def _sync_content_review():
-    rows = await sb_get("content_review", f"?client=eq.{config.CLIENT}&order=id.asc")
-    infs = await sb_get("paid_influencers", f"?client=eq.{config.CLIENT}&select=id,ig_handle")
-    inf_map = {i["id"]: (i.get("ig_handle") or "").lower() for i in infs}
+    """Sync CR rows to exactly match what Outreach shows for each creator.
+    Uses the same plan-lookup logic as get_paid_plan so it's always consistent."""
+    from collections import defaultdict
 
-    # Build handle → influencer_id map (prefer EXT, fallback INT)
-    handle_to_inf_id: dict = {}
-    all_infs_full = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,ig_handle,list_type&in_paid_plan=eq.true")
-    for i in all_infs_full:
-        h = (i.get("ig_handle") or "").lower()
-        if h:
-            existing = handle_to_inf_id.get(h)
-            if not existing or i.get("list_type") == "EXT":
-                handle_to_inf_id[h] = i["id"]
+    cr_rows = await sb_get("content_review", f"?client=eq.{config.CLIENT}&order=id.asc")
 
-    plans = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}")
-    def total_qty(p: dict) -> int:
-        return sum((p.get(k) or 0) for k in ["ig_feed_qty","ig_reel_qty","ig_story_qty","tt_qty"])
-    plan_by_handle: dict = {}
+    # id → handle map for all influencers
+    all_infs = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&select=id,ig_handle")
+    id_to_handle = {i["id"]: (i.get("ig_handle") or "").lower() for i in all_infs}
+
+    # Same logic as get_paid_plan: iterate in_paid_plan influencers, find plan by ID then handle
+    paid_infs = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&in_paid_plan=eq.true&order=name.asc")
+    plans = await sb_get("paid_plan",
+        f"?client=eq.{config.CLIENT}&order=created_at.asc")
+
+    plan_map: dict = {}
     for p in plans:
-        handle = inf_map.get(p["influencer_id"], "")
-        if handle:
-            existing = plan_by_handle.get(handle)
-            if not existing or total_qty(p) > total_qty(existing):
-                plan_by_handle[handle] = p
+        if p["influencer_id"] not in plan_map:
+            plan_map[p["influencer_id"]] = p
+    handle_to_plan: dict = {}
+    for p in plans:
+        h = id_to_handle.get(p["influencer_id"], "")
+        if h and h not in handle_to_plan:
+            handle_to_plan[h] = p
 
     CR_TYPES = [
         ("IG Feed",  "ig_feed_qty"),
@@ -495,44 +507,45 @@ async def _sync_content_review():
     ]
 
     def is_blank(r: dict) -> bool:
-        check = ["status","concept","concept_feedback","content_v1","content_v2",
-                 "a8_feedback_v1","client_feedback_v1","a8_feedback_v2","client_feedback_v2"]
-        return all(not r.get(f) for f in check)
+        fields = ["status","concept","concept_feedback","content_v1","content_v2",
+                  "a8_feedback_v1","client_feedback_v1","a8_feedback_v2","client_feedback_v2"]
+        return all(not r.get(f) for f in fields)
 
-    # Group existing CR rows by (handle, deliverable_type)
-    from collections import defaultdict
+    # Group CR rows by (handle, deliverable_type) covering both INT and EXT ids
     groups: dict = defaultdict(list)
-    for r in rows:
-        handle = inf_map.get(r["influencer_id"], "")
-        groups[(handle, r.get("deliverable_type",""))].append(r)
+    for r in cr_rows:
+        h = id_to_handle.get(r["influencer_id"], "")
+        groups[(h, r.get("deliverable_type", ""))].append(r)
 
+    seen_handles: set = set()
     added = 0
     deleted = 0
 
-    for handle, plan in plan_by_handle.items():
-        inf_id = handle_to_inf_id.get(handle) or next(
-            (r["influencer_id"] for r in rows if inf_map.get(r["influencer_id"]) == handle), None)
-        if not inf_id:
+    for inf in paid_infs:
+        handle = (inf.get("ig_handle") or "").lower()
+        if not handle or handle in seen_handles:
             continue
+        seen_handles.add(handle)
+
+        # Exactly the same plan lookup Outreach uses
+        plan = plan_map.get(inf["id"]) or handle_to_plan.get(handle, {})
+
         for del_type, qty_field in CR_TYPES:
             expected = plan.get(qty_field) or 0
             current  = groups.get((handle, del_type), [])
             count    = len(current)
 
             if count < expected:
-                # Add missing rows
                 for _ in range(expected - count):
                     await sb_post("content_review", {
-                        "client": config.CLIENT,
-                        "influencer_id": inf_id,
+                        "client":          config.CLIENT,
+                        "influencer_id":   inf["id"],
                         "deliverable_type": del_type,
                     })
                     added += 1
-
             elif count > expected:
-                # Remove only blank excess rows (newest first to keep filled rows)
-                extras = list(reversed(current))[:(count - expected)]
-                for r in extras:
+                # Remove only blank excess rows — newest first so filled rows survive
+                for r in list(reversed(current))[:(count - expected)]:
                     if is_blank(r):
                         await sb_delete("content_review", r["id"])
                         deleted += 1
