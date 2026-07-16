@@ -416,8 +416,8 @@ async def get_content_review():
 
     for r in rows:
         r["influencer"] = inf_map.get(r["influencer_id"], {})
-        # Only backfill if the CR row itself has no usage/is_collab stored
-        if r.get("usage") is None and r.get("is_collab") is None:
+        # Backfill if usage not yet stored on the CR row itself
+        if r.get("usage") is None:
             handle = id_to_handle.get(r["influencer_id"], "")
             plan   = handle_to_plan.get(handle, {})
             pd     = plan.get("post_details") or {}
