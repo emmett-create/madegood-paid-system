@@ -623,12 +623,7 @@ async function loadOutreach() {
         <span style="color:var(--dim)">Story</span><input type="number" class="or-del" data-id="${r.id}" data-field="ig_story_qty" value="${plan.ig_story_qty||0}" min="0" style="width:36px;${iS};padding:2px 4px">
         <span style="color:var(--dim)">TT</span><input type="number" class="or-del" data-id="${r.id}" data-field="tt_qty" value="${plan.tt_qty||0}" min="0" style="width:36px;${iS};padding:2px 4px">
       </div>
-    </td>
-    <td>
-      <select class="or-usage" data-id="${r.id}" style="${iS};min-width:140px">
-        <option value="">—</option>
-        ${["Organic (30 days)","Baked in Paid (30 days)","Pre-Negotiated Paid (30 days)","Other"].map(u=>`<option ${r.outreach_usage===u?"selected":""}>${u}</option>`).join("")}
-      </select>
+      <button class="btn-sec or-configure" data-id="${r.id}" style="margin-top:5px;font-size:10px;padding:2px 8px;width:100%">⚙ Usage &amp; Collab</button>
     </td>
     <td>
       <select class="or-status-sel" data-id="${r.id}" style="${iS};min-width:130px">
@@ -639,7 +634,7 @@ async function loadOutreach() {
     <td><input type="date" class="or-last" data-id="${r.id}" value="${r.last_contact||""}" style="${iS}"></td>
     <td><input class="or-notes" data-id="${r.id}" value="${esc(r.outreach_notes||"")}" placeholder="Notes" style="width:120px;${iS}"></td>
     <td>${r.in_paid_plan ? '<span class="badge badge-locked">✓</span>' : ""}</td>
-  </tr>`;}).join("") : `<tr><td colspan="19" class="empty-cell">No creators found.</td></tr>`;
+  </tr>`;}).join("") : `<tr><td colspan="18" class="empty-cell">No creators found.</td></tr>`;
 
   const saveField = async (id, field, value) => {
     await apiPatch(`/api/influencers/${id}`, {[field]: value || null});
@@ -673,7 +668,12 @@ async function loadOutreach() {
   document.querySelectorAll(".or-email").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "email", i.value.trim())));
   document.querySelectorAll(".or-init-rate").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "initial_rate", i.value.trim())));
   document.querySelectorAll(".or-quot-rate").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "quoted_rate", i.value.trim())));
-  document.querySelectorAll(".or-usage").forEach(s => s.addEventListener("change", () => saveField(s.dataset.id, "outreach_usage", s.value)));
+  document.querySelectorAll(".or-configure").forEach(btn => btn.addEventListener("click", () => {
+    const row = rows.find(r => String(r.id) === btn.dataset.id);
+    if (!row) return;
+    const plan = getPlan(row);
+    openPostDetailsModal(row, plan);
+  }));
   document.querySelectorAll(".or-del").forEach(i => i.addEventListener("change", () => {
     const row = rows.find(r => String(r.id) === i.dataset.id);
     savePlanQty(i.dataset.id, row?.ig_handle, i.dataset.field, i.value);
@@ -1321,6 +1321,66 @@ window.toggleCRGroup = (groupKey, parentTr) => {
   else crExpandedGroups.delete(groupKey);
 };
 
+// ── Per-post usage & collab modal (opened from Outreach) ─────────────────────
+const USAGE_OPTS = [
+  "Organic (30 days)", "Baked in Paid (30 days)",
+  "Pre-Negotiated Paid (30 days)", "Other"
+];
+const DEL_KEYS = [
+  { key: "ig_feed",  label: "IG Feed",  planField: "ig_feed_qty",  crType: "IG Feed"  },
+  { key: "ig_reel",  label: "IG Reel",  planField: "ig_reel_qty",  crType: "IG Reel"  },
+  { key: "ig_story", label: "IG Story", planField: "ig_story_qty", crType: "IG Story" },
+  { key: "tt",       label: "TikTok",   planField: "tt_qty",       crType: "TikTok"   },
+];
+
+function openPostDetailsModal(row, plan) {
+  const active = DEL_KEYS.filter(d => (plan[d.planField] || 0) > 0);
+  if (!active.length) {
+    alert("Set deliverable quantities first, then configure usage and collab.");
+    return;
+  }
+  const pd = plan.post_details || {};
+  const bodyHtml = active.map(d => {
+    const qty   = plan[d.planField] || 0;
+    const posts = Array.from({length: qty}, (_, i) => (pd[d.key] || [])[i] || {usage: [], is_collab: false});
+    return `<div class="form-section">${d.label} (${qty})</div>` +
+      posts.map((p, i) => `
+        <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px">
+          <div style="font-size:11px;font-weight:600;margin-bottom:8px;color:var(--dim)">Post ${i + 1}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px">
+            ${USAGE_OPTS.map(u => `
+              <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer">
+                <input type="checkbox" class="pd-usage" data-key="${d.key}" data-idx="${i}" value="${u}" ${(p.usage||[]).includes(u) ? "checked" : ""}>
+                ${u}
+              </label>`).join("")}
+          </div>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;font-weight:600;color:var(--purple,#6b3fa0)">
+            <input type="checkbox" class="pd-collab" data-key="${d.key}" data-idx="${i}" ${p.is_collab ? "checked" : ""}>
+            Collab Post
+          </label>
+        </div>`).join("");
+  }).join("");
+
+  openModal(`Usage & Collab — ${esc(row.name || "")}`, bodyHtml, async () => {
+    const newPd = {};
+    active.forEach(d => {
+      const qty = plan[d.planField] || 0;
+      newPd[d.key] = Array.from({length: qty}, (_, i) => ({
+        usage:    [...document.querySelectorAll(`.pd-usage[data-key="${d.key}"][data-idx="${i}"]:checked`)].map(cb => cb.value),
+        is_collab: document.querySelector(`.pd-collab[data-key="${d.key}"][data-idx="${i}"]`)?.checked || false,
+      }));
+    });
+    if (plan.id) {
+      await apiPatch(`/api/paid_plan/${plan.id}`, {post_details: newPd});
+    } else {
+      const newPlan = await apiPost("/api/paid_plan", {influencer_id: row.id, post_details: newPd});
+      if (newPlan?.id) plan.id = newPlan.id;
+    }
+    plan.post_details = newPd;
+    closeModal();
+  });
+}
+
 // Helper: auto-create N Content Review entries per deliverable type when Locked
 async function autoCreateContentReviewEntries(influencerId, plan) {
   const existing = await apiGet("/api/content_review");
@@ -1332,17 +1392,24 @@ async function autoCreateContentReviewEntries(influencerId, plan) {
     (igHandle && (r.influencer?.ig_handle || "").toLowerCase() === igHandle)
   );
 
-  const deliverables = [
-    { type: "IG Reel",   qty: plan.ig_reel_qty  || 0 },
-    { type: "IG Story",  qty: plan.ig_story_qty || 0 },
-    { type: "IG Feed",   qty: plan.ig_feed_qty  || 0 },
-    { type: "TikTok",    qty: plan.tt_qty       || 0 },
-  ];
-  for (const del of deliverables) {
-    const existingCount = existingForInf.filter(r => r.deliverable_type === del.type).length;
-    const toAdd = Math.max(0, del.qty - existingCount);
+  const pd = plan.post_details || {};
+  for (const d of DEL_KEYS) {
+    const qty = plan[d.planField] || 0;
+    const existingForType = existingForInf.filter(r => r.deliverable_type === d.crType);
+    const existingCount   = existingForType.length;
+    const posts = pd[d.key] || [];
+    const toAdd = Math.max(0, qty - existingCount);
     for (let i = 0; i < toAdd; i++) {
-      await apiPost("/api/content_review", {influencer_id: influencerId, deliverable_type: del.type});
+      const postIdx   = existingCount + i;
+      const postData  = posts[postIdx] || {};
+      const usage     = (postData.usage || []).join(", ") || null;
+      const is_collab = postData.is_collab || false;
+      await apiPost("/api/content_review", {
+        influencer_id:    influencerId,
+        deliverable_type: d.crType,
+        usage,
+        is_collab,
+      });
     }
   }
 }
@@ -1404,7 +1471,11 @@ async function loadContentReview() {
         </select>
       </td>
       <td style="color:var(--dim);font-size:13px;padding-left:8px;white-space:nowrap">↳</td>
-      <td style="white-space:nowrap;font-weight:600;font-size:12px">${esc(r.deliverable_type||"—")}</td>
+      <td style="white-space:nowrap;font-weight:600;font-size:12px">
+        ${esc(r.deliverable_type||"—")}
+        ${r.is_collab ? `<span class="badge" style="background:#ede8f5;color:#6b3fa0;border:1px solid #c5b0e0;font-size:9px;margin-left:4px;vertical-align:middle">Collab</span>` : ""}
+        ${r.usage ? `<div style="font-size:9px;color:var(--dim);font-weight:400;margin-top:2px">${esc(r.usage)}</div>` : ""}
+      </td>
       <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:110px"></td>
       <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:110px"></td>
       <td><textarea class="cr-concept auto-expand" data-id="${r.id}" placeholder="Concept" style="${iS};min-width:110px">${esc(r.concept||"")}</textarea></td>
