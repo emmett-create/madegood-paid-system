@@ -812,7 +812,7 @@ async function loadPaidPlan() {
       }
       // If set to Locked → create Content Review entries
       if (newStatus === "Locked") {
-        try { await autoCreateContentReviewEntries(row.influencer_id, row); }
+        try { await autoCreateContentReviewEntries(row.influencer_id, {...row, post_details: row.post_details || {}}); }
         catch(err) { console.error("Could not auto-create Content Review:", err); }
       }
       // If changed AWAY from Locked → delete Content Review entries + their calendar entries
@@ -969,7 +969,7 @@ async function openPaidPlanModal(row) {
     // Status Locked → create Content Review entries
     // Pass influencer data so handle-based dedup works correctly
     if (payload.status === "Locked") {
-      try { await autoCreateContentReviewEntries(e.influencer_id, {...payload, ig_handle: e.influencer?.ig_handle || "", influencer: e.influencer}); }
+      try { await autoCreateContentReviewEntries(e.influencer_id, {...payload, ig_handle: e.influencer?.ig_handle || "", influencer: e.influencer, post_details: e.post_details || {}}); }
       catch(err) { console.error("Could not auto-create Content Review:", err); }
     }
     // Changed AWAY from Locked → cascade delete Content Review + Calendar entries
@@ -1418,6 +1418,9 @@ async function autoCreateContentReviewEntries(influencerId, plan) {
 }
 
 async function loadContentReview() {
+  // Silently auto-cleanup duplicates on every load so counts always match paid plan
+  try { await apiPost("/api/content_review/cleanup_duplicates", {}); } catch { /* ignore */ }
+
   const data = await apiGet("/api/content_review");
   const filter = $("cr-filter-status")?.value;
   let rows = data;
@@ -1478,8 +1481,8 @@ async function loadContentReview() {
       <td style="text-align:center">
         ${r.is_collab ? `<span class="badge badge-int" style="background:#ede8f5;color:#6b3fa0;border:1px solid #c5b0e0">Collab</span>` : `<span style="color:var(--dim);font-size:11px">—</span>`}
       </td>
-      <td style="font-size:11px;color:var(--dim)">
-        ${r.usage ? r.usage.split(", ").map(u => `<div>${esc(u)}</div>`).join("") : "—"}
+      <td style="font-size:11px;color:var(--dim);min-width:160px;white-space:nowrap">
+        ${r.usage ? r.usage.split(", ").map(u => `<div style="padding:1px 0">${esc(u)}</div>`).join("") : "—"}
       </td>
       <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:110px"></td>
       <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:110px"></td>

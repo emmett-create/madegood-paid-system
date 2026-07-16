@@ -291,6 +291,7 @@ async def get_paid_plan():
             "a8_counter": p.get("a8_counter"),
             "accepted_offer": p.get("accepted_offer"),
             "notes": p.get("notes"),
+            "post_details": p.get("post_details") or {},
         })
     return result
 
