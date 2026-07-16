@@ -1275,7 +1275,7 @@ async function syncCalendarEntry(crId, infId, delType, liveDate, dueDate, approv
   const liveEntry = calRows.find(c => c.content_review_id === crId && (c.notes||"").includes("type:live"));
   if (liveDate) {
     if (liveEntry) {
-      await apiPatch(`/api/content_calendar/${liveEntry.id}`, {scheduled_date: liveDate, approved});
+      await apiPatch(`/api/content_calendar/${liveEntry.id}`, {scheduled_date: liveDate, approved, collab: isCollab});
     } else {
       await apiPost("/api/content_calendar", {
         influencer_id:    infId,
