@@ -1418,9 +1418,9 @@ async function autoCreateContentReviewEntries(influencerId, plan) {
 }
 
 async function loadContentReview() {
-  // Silently auto-cleanup duplicates on every load so counts always match paid plan
-  try { await apiPost("/api/content_review/cleanup_duplicates", {}); } catch { /* ignore */ }
-
+  // Auto-sync row counts to match paid plan quantities on every load
+  // Only removes rows that are completely blank — never deletes data you've entered
+  try { await apiPost("/api/content_review/auto_sync", {}); } catch { /* ignore */ }
   const data = await apiGet("/api/content_review");
   const filter = $("cr-filter-status")?.value;
   let rows = data;

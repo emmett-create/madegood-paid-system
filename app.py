@@ -453,36 +453,91 @@ async def delete_content_review(id: int, password: str = ""):
 @app.post("/api/content_review/cleanup_duplicates")
 async def cleanup_cr_duplicates(req: dict):
     check_auth(req.pop("password", None))
-    rows = await sb_get("content_review", f"?client=eq.{config.CLIENT}")
-    infs = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,ig_handle")
+    return await _sync_content_review()
+
+@app.post("/api/content_review/auto_sync")
+async def auto_sync_content_review(req: dict):
+    check_auth(req.pop("password", None))
+    return await _sync_content_review()
+
+async def _sync_content_review():
+    rows = await sb_get("content_review", f"?client=eq.{config.CLIENT}&order=id.asc")
+    infs = await sb_get("paid_influencers", f"?client=eq.{config.CLIENT}&select=id,ig_handle")
     inf_map = {i["id"]: (i.get("ig_handle") or "").lower() for i in infs}
+
+    # Build handle → influencer_id map (prefer EXT, fallback INT)
+    handle_to_inf_id: dict = {}
+    all_infs_full = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&select=id,ig_handle,list_type&in_paid_plan=eq.true")
+    for i in all_infs_full:
+        h = (i.get("ig_handle") or "").lower()
+        if h:
+            existing = handle_to_inf_id.get(h)
+            if not existing or i.get("list_type") == "EXT":
+                handle_to_inf_id[h] = i["id"]
+
     plans = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}")
+    def total_qty(p: dict) -> int:
+        return sum((p.get(k) or 0) for k in ["ig_feed_qty","ig_reel_qty","ig_story_qty","tt_qty"])
     plan_by_handle: dict = {}
     for p in plans:
         handle = inf_map.get(p["influencer_id"], "")
-        if handle and handle not in plan_by_handle:
-            plan_by_handle[handle] = p
-    # Group CR rows by (handle, deliverable_type), oldest first
-    groups: dict = {}
-    for r in sorted(rows, key=lambda x: x["id"]):
-        handle = inf_map.get(r["influencer_id"], str(r["influencer_id"]))
-        key = (handle, r.get("deliverable_type", ""))
-        groups.setdefault(key, []).append(r)
+        if handle:
+            existing = plan_by_handle.get(handle)
+            if not existing or total_qty(p) > total_qty(existing):
+                plan_by_handle[handle] = p
+
+    CR_TYPES = [
+        ("IG Feed",  "ig_feed_qty"),
+        ("IG Reel",  "ig_reel_qty"),
+        ("IG Story", "ig_story_qty"),
+        ("TikTok",   "tt_qty"),
+    ]
+
+    def is_blank(r: dict) -> bool:
+        check = ["status","concept","concept_feedback","content_v1","content_v2",
+                 "a8_feedback_v1","client_feedback_v1","a8_feedback_v2","client_feedback_v2"]
+        return all(not r.get(f) for f in check)
+
+    # Group existing CR rows by (handle, deliverable_type)
+    from collections import defaultdict
+    groups: dict = defaultdict(list)
+    for r in rows:
+        handle = inf_map.get(r["influencer_id"], "")
+        groups[(handle, r.get("deliverable_type",""))].append(r)
+
+    added = 0
     deleted = 0
-    for (handle, del_type), entries in groups.items():
-        plan = plan_by_handle.get(handle, {})
-        qty_map = {
-            "IG Reel":  plan.get("ig_reel_qty",  0) or 0,
-            "IG Story": plan.get("ig_story_qty", 0) or 0,
-            "IG Feed":  plan.get("ig_feed_qty",  0) or 0,
-            "TikTok":   plan.get("tt_qty",       0) or 0,
-        }
-        expected = qty_map.get(del_type, 0)
-        for extra in entries[expected:]:
-            await sb_delete("content_review", extra["id"])
-            deleted += 1
-    return {"deleted": deleted}
+
+    for handle, plan in plan_by_handle.items():
+        inf_id = handle_to_inf_id.get(handle) or next(
+            (r["influencer_id"] for r in rows if inf_map.get(r["influencer_id"]) == handle), None)
+        if not inf_id:
+            continue
+        for del_type, qty_field in CR_TYPES:
+            expected = plan.get(qty_field) or 0
+            current  = groups.get((handle, del_type), [])
+            count    = len(current)
+
+            if count < expected:
+                # Add missing rows
+                for _ in range(expected - count):
+                    await sb_post("content_review", {
+                        "client": config.CLIENT,
+                        "influencer_id": inf_id,
+                        "deliverable_type": del_type,
+                    })
+                    added += 1
+
+            elif count > expected:
+                # Remove only blank excess rows (newest first to keep filled rows)
+                extras = list(reversed(current))[:(count - expected)]
+                for r in extras:
+                    if is_blank(r):
+                        await sb_delete("content_review", r["id"])
+                        deleted += 1
+
+    return {"added": added, "deleted": deleted}
 
 # ── Live Posts ────────────────────────────────────────────────────────────────
 @app.get("/api/live_posts")
