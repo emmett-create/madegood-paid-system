@@ -425,10 +425,10 @@ async def sync_calendar_from_cr(req: dict):
     for r in cr_rows:
         del_type = r.get("deliverable_type","")
         del_qty  = _json.dumps({
-            "feed":   1 if del_type=="IG Feed"  else 0,
-            "reel":   1 if del_type=="IG Reel"  else 0,
-            "story":  1 if del_type=="IG Story" else 0,
-            "tiktok": 1 if del_type=="TikTok"   else 0,
+            "ig_feed":  1 if del_type=="IG Feed"  else 0,
+            "ig_reel":  1 if del_type=="IG Reel"  else 0,
+            "ig_story": 1 if del_type=="IG Story" else 0,
+            "tiktok":   1 if del_type=="TikTok"   else 0,
         })
         base = {
             "client": config.CLIENT, "influencer_id": r["influencer_id"],
