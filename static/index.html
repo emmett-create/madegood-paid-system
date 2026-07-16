@@ -231,6 +231,13 @@
             <button class="btn-pri" id="btn-add-cal">+ Add Entry</button>
           </div>
         </div>
+        <!-- Calendar color key -->
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:12px;font-size:11px">
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#5b6ee8;display:inline-block"></span>Due Date</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#CA0100;display:inline-block"></span>Live — Not Approved</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#1a7a1a;display:inline-block"></span>Live — Approved</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#6b3fa0;display:inline-block"></span>Collab Post</span>
+        </div>
         <div id="cal-view">
           <div class="cal-nav-row">
             <button class="cal-btn" id="cal-prev">← Prev</button>
@@ -287,6 +294,8 @@
                 <th>Campaign</th>
                 <th></th>
                 <th>Deliverable</th>
+                <th>Collab Post</th>
+                <th>Usage</th>
                 <th>Due</th>
                 <th>Live Date</th>
                 <th>Concept</th>
@@ -303,7 +312,7 @@
                 <th></th>
               </tr>
             </thead>
-            <tbody id="cr-body"><tr><td colspan="25" class="empty-cell">Loading…</td></tr></tbody>
+            <tbody id="cr-body"><tr><td colspan="27" class="empty-cell">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>

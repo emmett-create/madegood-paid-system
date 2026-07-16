@@ -1086,11 +1086,14 @@ function renderCalendar() {
           });
           return Object.values(groups).map(g => {
             const chips = g.entries.map(e => {
-              const isDue = (e.notes||"").includes("type:due");
-              const cls   = isDue ? "cal-entry cal-entry-due"
-                          : e.approved ? "cal-entry cal-entry-live-approved"
-                          : "cal-entry cal-entry-live-pending";
-              return `<div class="${cls}">${esc(fmtDeliverable(e.deliverable))}</div>`;
+              const isDue  = (e.notes||"").includes("type:due");
+              const cls    = isDue ? "cal-entry cal-entry-due"
+                           : e.approved ? "cal-entry cal-entry-live-approved"
+                           : "cal-entry cal-entry-live-pending";
+              const collab = !isDue && e.collab;
+              const style  = collab ? ' style="background:#6b3fa0;color:#fff"' : '';
+              const prefix = collab ? "C· " : "";
+              return `<div class="${cls}"${style}>${prefix}${esc(fmtDeliverable(e.deliverable))}</div>`;
             }).join("");
             const name = g.inf.name || g.inf.ig_handle || "";
             return `<div style="margin-bottom:3px">${chips}<div style="font-size:8px;color:var(--dim);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(name)}</div></div>`;
@@ -1256,7 +1259,7 @@ const CR_CAMPAIGNS = ["A8 Paid Influencers", "MadeGood Paid Influencers", "Shipp
 const CR_STATUSES  = ["New! Needs Client Review", "Client Reviewed: Approved", "Client Reviewed: Needs Edits"];
 
 // Sync a content_review record's dates to the Content Calendar
-async function syncCalendarEntry(crId, infId, delType, liveDate, dueDate, approved) {
+async function syncCalendarEntry(crId, infId, delType, liveDate, dueDate, approved, isCollab = false) {
   if (!calRows.length) {
     try { calRows = await apiGet("/api/content_calendar"); } catch {}
   }
@@ -1281,7 +1284,7 @@ async function syncCalendarEntry(crId, infId, delType, liveDate, dueDate, approv
         notes:            `${noteKey(crId)}|type:live`,
         content_review_id: crId,
         approved,
-        collab: false,
+        collab: isCollab,
       });
     }
   }
@@ -1431,7 +1434,7 @@ async function loadContentReview() {
   });
 
   const iS = "background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:11px;width:100%";
-  const NCOLS = 25;
+  const NCOLS = 27;
 
   $("cr-body").innerHTML = Object.values(groups).length ? Object.values(groups).map(group => {
     const inf = group.inf;
@@ -1471,10 +1474,12 @@ async function loadContentReview() {
         </select>
       </td>
       <td style="color:var(--dim);font-size:13px;padding-left:8px;white-space:nowrap">↳</td>
-      <td style="white-space:nowrap;font-weight:600;font-size:12px">
-        ${esc(r.deliverable_type||"—")}
-        ${r.is_collab ? `<span class="badge" style="background:#ede8f5;color:#6b3fa0;border:1px solid #c5b0e0;font-size:9px;margin-left:4px;vertical-align:middle">Collab</span>` : ""}
-        ${r.usage ? `<div style="font-size:9px;color:var(--dim);font-weight:400;margin-top:2px">${esc(r.usage)}</div>` : ""}
+      <td style="white-space:nowrap;font-weight:600;font-size:12px">${esc(r.deliverable_type||"—")}</td>
+      <td style="text-align:center">
+        ${r.is_collab ? `<span class="badge badge-int" style="background:#ede8f5;color:#6b3fa0;border:1px solid #c5b0e0">Collab</span>` : `<span style="color:var(--dim);font-size:11px">—</span>`}
+      </td>
+      <td style="font-size:11px;color:var(--dim)">
+        ${r.usage ? r.usage.split(", ").map(u => `<div>${esc(u)}</div>`).join("") : "—"}
       </td>
       <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:110px"></td>
       <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:110px"></td>
@@ -1521,14 +1526,14 @@ async function loadContentReview() {
     el.addEventListener("change", async () => {
       await apiPatch(`/api/content_review/${el.dataset.id}`, {content_due_date: el.value || null});
       const r = rows.find(x => String(x.id) === el.dataset.id);
-      if (r) syncCalendarEntry(r.id, r.influencer_id, r.deliverable_type, r.live_date, el.value, r.approved_by_client);
+      if (r) syncCalendarEntry(r.id, r.influencer_id, r.deliverable_type, r.live_date, el.value, r.approved_by_client, r.is_collab);
     })
   );
   document.querySelectorAll(".cr-live").forEach(el =>
     el.addEventListener("change", async () => {
       await apiPatch(`/api/content_review/${el.dataset.id}`, {live_date: el.value || null});
       const r = rows.find(x => String(x.id) === el.dataset.id);
-      if (r) syncCalendarEntry(r.id, r.influencer_id, r.deliverable_type, el.value, r.content_due_date, r.approved_by_client);
+      if (r) syncCalendarEntry(r.id, r.influencer_id, r.deliverable_type, el.value, r.content_due_date, r.approved_by_client, r.is_collab);
     })
   );
   wire("cr-concept",     "concept",          "blur");
@@ -1549,7 +1554,7 @@ async function loadContentReview() {
       await apiPatch(`/api/content_review/${cb.dataset.id}`, {approved_by_client: cb.checked});
       if (cb.checked) {
         // Approved → sync calendar entries
-        if (r) syncCalendarEntry(r.id, r.influencer_id, r.deliverable_type, cb.dataset.live, cb.dataset.due, true);
+        if (r) syncCalendarEntry(r.id, r.influencer_id, r.deliverable_type, cb.dataset.live, cb.dataset.due, true, r.is_collab);
       } else {
         // Unapproved → delete linked calendar entries
         const crId = parseInt(cb.dataset.id);

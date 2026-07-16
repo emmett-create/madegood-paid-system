@@ -388,14 +388,48 @@ async def delete_content_calendar(id: int, password: str = ""):
 @app.get("/api/content_review")
 async def get_content_review():
     rows = await sb_get("content_review",
-        f"?client=eq.{config.CLIENT}&order=content_due_date.asc")
+        f"?client=eq.{config.CLIENT}&order=id.asc")
     influencers = await sb_get("paid_influencers",
         f"?client=eq.{config.CLIENT}"
         f"&select=id,name,ig_handle,ig_url,tt_handle,tt_url,"
         f"ig_followers,tt_followers,tier,vertical,archetype,campaign,location,gender")
     inf_map = {i["id"]: i for i in influencers}
+
+    # Build handle → post_details map from paid_plan so existing CR rows
+    # get usage/is_collab even if they were created before those columns existed
+    plans = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}")
+    all_infs = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&select=id,ig_handle")
+    id_to_handle = {i["id"]: (i.get("ig_handle") or "").lower() for i in all_infs}
+    handle_to_plan: dict = {}
+    for p in plans:
+        handle = id_to_handle.get(p["influencer_id"], "")
+        if handle and handle not in handle_to_plan:
+            handle_to_plan[handle] = p
+
+    CR_TYPE_KEY = {"IG Feed": "ig_feed", "IG Reel": "ig_reel",
+                   "IG Story": "ig_story", "TikTok": "tt"}
+
+    # Group rows by (handle, deliverable_type) in id order to assign post index
+    from collections import defaultdict
+    group_counters: dict = defaultdict(int)
+
     for r in rows:
         r["influencer"] = inf_map.get(r["influencer_id"], {})
+        # Only backfill if the CR row itself has no usage/is_collab stored
+        if r.get("usage") is None and r.get("is_collab") is None:
+            handle = id_to_handle.get(r["influencer_id"], "")
+            plan   = handle_to_plan.get(handle, {})
+            pd     = plan.get("post_details") or {}
+            key    = CR_TYPE_KEY.get(r.get("deliverable_type", ""), "")
+            posts  = pd.get(key, [])
+            gk     = (handle, r.get("deliverable_type", ""))
+            idx    = group_counters[gk]
+            group_counters[gk] += 1
+            if idx < len(posts):
+                post = posts[idx]
+                r["usage"]     = ", ".join(post.get("usage") or []) or None
+                r["is_collab"] = post.get("is_collab", False)
     return rows
 
 @app.post("/api/content_review")
