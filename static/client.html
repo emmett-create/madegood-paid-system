@@ -36,6 +36,27 @@
     .empty { text-align:center;color:var(--dim);padding:40px; }
     .search-row { display:flex;gap:10px;margin-bottom:16px; }
     .search-box { background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 14px;font-size:13px;min-width:260px; }
+    .tab-nav { display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0; }
+    .tab-btn { background:none;border:none;border-bottom:2px solid transparent;color:var(--dim);padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer; }
+    .tab-btn.active { color:var(--text);border-bottom-color:var(--red); }
+    .tab-panel { display:none; } .tab-panel.active { display:block; }
+    .cal-key { display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:14px;font-size:11px; }
+    .cal-key span { display:flex;align-items:center;gap:5px; }
+    .cal-key-dot { width:12px;height:12px;border-radius:3px;display:inline-block; }
+    .cal-nav { display:flex;align-items:center;gap:12px;margin-bottom:12px; }
+    .cal-nav-btn { background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px; }
+    .cal-month { font-weight:700;font-size:16px; }
+    .cal-dow { display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px; }
+    .cal-dow div { text-align:center;font-size:11px;color:var(--dim);padding:4px; }
+    .cal-grid { display:grid;grid-template-columns:repeat(7,1fr);gap:4px; }
+    .cal-day { background:var(--panel);border:1px solid var(--border);border-radius:6px;min-height:80px;padding:6px;font-size:11px; }
+    .cal-day.faded { background:transparent;border:none; }
+    .cal-day-num { font-weight:600;margin-bottom:4px; }
+    .cal-chip { display:inline-block;border-radius:3px;padding:1px 6px;margin:1px 2px 1px 0;font-size:9px;font-weight:600; }
+    .chip-due { background:#5b6ee8;color:#fff; }
+    .chip-live { background:#CA0100;color:#fff; }
+    .chip-approved { background:#1a7a1a;color:#fff; }
+    .chip-collab { background:#6b3fa0;color:#fff; }
   </style>
 </head>
 <body>
@@ -59,33 +80,48 @@
   </header>
 
   <div class="container">
-    <h2>Creator Review</h2>
-    <p class="sub">Check the box next to any creator you'd like to approve. Add notes in the Notes column.</p>
-
-    <div class="search-row">
-      <input type="search" class="search-box" id="cl-search" placeholder="Search name, handle…">
+    <div class="tab-nav">
+      <button class="tab-btn active" id="tab-creators">Creators</button>
+      <button class="tab-btn" id="tab-calendar">Content Calendar</button>
     </div>
 
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Approved</th>
-            <th>Name</th>
-            <th>IG Handle</th>
-            <th>TT Handle</th>
-            <th>IG Followers</th>
-            <th>TT Followers</th>
-            <th>Tier</th>
-            <th>Vertical</th>
-            <th>Location</th>
-            <th>Gender</th>
-            <th>Campaign</th>
-            <th>Notes</th>
-          </tr>
-        </thead>
-        <tbody id="cl-body"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody>
-      </table>
+    <!-- Creators tab -->
+    <div class="tab-panel active" id="panel-creators">
+      <p class="sub">Check the box next to any creator you'd like to approve. Add notes in the Notes column.</p>
+      <div class="search-row">
+        <input type="search" class="search-box" id="cl-search" placeholder="Search name, handle…">
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Approved</th><th>Name</th><th>IG Handle</th><th>TT Handle</th>
+              <th>IG Followers</th><th>TT Followers</th><th>Tier</th><th>Vertical</th>
+              <th>Location</th><th>Gender</th><th>Campaign</th><th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="cl-body"><tr><td colspan="12" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Calendar tab -->
+    <div class="tab-panel" id="panel-calendar">
+      <div class="cal-key">
+        <span><span class="cal-key-dot" style="background:#5b6ee8"></span>Due Date</span>
+        <span><span class="cal-key-dot" style="background:#CA0100"></span>Live — Not Approved</span>
+        <span><span class="cal-key-dot" style="background:#1a7a1a"></span>Live — Approved</span>
+        <span><span class="cal-key-dot" style="background:#6b3fa0"></span>Collab Post</span>
+      </div>
+      <div class="cal-nav">
+        <button class="cal-nav-btn" id="cal-prev">← Prev</button>
+        <span class="cal-month" id="cal-month-label"></span>
+        <button class="cal-nav-btn" id="cal-next">Next →</button>
+      </div>
+      <div class="cal-dow">
+        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
     </div>
   </div>
 </div>
@@ -118,6 +154,21 @@ async function loadCreators() {
   allRows = data || [];
   renderCreators();
 }
+
+// Tab switching
+document.getElementById("tab-creators").addEventListener("click", () => {
+  document.getElementById("tab-creators").classList.add("active");
+  document.getElementById("tab-calendar").classList.remove("active");
+  document.getElementById("panel-creators").classList.add("active");
+  document.getElementById("panel-calendar").classList.remove("active");
+});
+document.getElementById("tab-calendar").addEventListener("click", () => {
+  document.getElementById("tab-calendar").classList.add("active");
+  document.getElementById("tab-creators").classList.remove("active");
+  document.getElementById("panel-calendar").classList.add("active");
+  document.getElementById("panel-creators").classList.remove("active");
+  if (!calLoaded) loadCalendar();
+});
 
 function renderCreators() {
   const search = document.getElementById("cl-search").value.toLowerCase();
@@ -161,6 +212,86 @@ function renderCreators() {
     })
   );
 }
+
+// ── Calendar ──────────────────────────────────────────────────────────────────
+let calRows = [], calYear = new Date().getFullYear(), calMonth = new Date().getMonth(), calLoaded = false;
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+async function loadCalendar() {
+  calLoaded = true;
+  calRows = await fetch("/api/client/calendar").then(r=>r.json());
+  renderCalendar();
+}
+
+function fmtDel(d) {
+  try {
+    const o = JSON.parse(d);
+    const p = [];
+    if (o.ig_reel  > 0) p.push(`${o.ig_reel}x Reel`);
+    if (o.ig_story > 0) p.push(`${o.ig_story}x Story`);
+    if (o.ig_feed  > 0) p.push(`${o.ig_feed}x Feed`);
+    if (o.tiktok   > 0) p.push(`${o.tiktok}x TT`);
+    return p.join(' · ') || '—';
+  } catch { return d || '—'; }
+}
+
+function renderCalendar() {
+  document.getElementById("cal-month-label").textContent = `${MONTHS[calMonth]} ${calYear}`;
+  const first = new Date(calYear, calMonth, 1).getDay();
+  const days  = new Date(calYear, calMonth + 1, 0).getDate();
+  const today = new Date().toISOString().slice(0,10);
+
+  const byDate = {};
+  calRows.forEach(e => {
+    const d = e.scheduled_date;
+    if (d && d.slice(0,7) === `${calYear}-${String(calMonth+1).padStart(2,'0')}`) {
+      if (!byDate[d]) byDate[d] = [];
+      byDate[d].push(e);
+    }
+  });
+
+  let html = '';
+  for (let i = 0; i < first; i++) html += '<div class="cal-day faded"></div>';
+  for (let d = 1; d <= days; d++) {
+    const ds = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const es = byDate[ds] || [];
+    const isToday = ds === today;
+
+    // Group by influencer
+    const groups = {};
+    es.forEach(e => {
+      const k = e.influencer_id;
+      if (!groups[k]) groups[k] = {name: e.influencer?.name || '', entries: []};
+      groups[k].entries.push(e);
+    });
+
+    const chips = Object.values(groups).map(g => {
+      const c = g.entries.map(e => {
+        const isDue = (e.notes||'').includes('type:due');
+        const cls = e.collab && !isDue ? 'chip-collab'
+                  : isDue             ? 'chip-due'
+                  : e.approved        ? 'chip-approved'
+                  :                     'chip-live';
+        const prefix = e.collab && !isDue ? 'C· ' : '';
+        return `<span class="cal-chip ${cls}">${prefix}${esc(fmtDel(e.deliverable))}</span>`;
+      }).join('');
+      return `<div style="margin-bottom:3px">${c}<div style="font-size:8px;color:#8a7070;margin-top:1px">${esc(g.name)}</div></div>`;
+    }).join('');
+
+    html += `<div class="cal-day${isToday?' is-today':''}" style="${isToday?'border-color:#CA0100':''}">
+      <div class="cal-day-num">${d}</div>${chips}</div>`;
+  }
+  document.getElementById("cal-grid").innerHTML = html;
+}
+
+document.getElementById("cal-prev").addEventListener("click", () => {
+  if (--calMonth < 0) { calMonth = 11; calYear--; }
+  renderCalendar();
+});
+document.getElementById("cal-next").addEventListener("click", () => {
+  if (++calMonth > 11) { calMonth = 0; calYear++; }
+  renderCalendar();
+});
 </script>
 </body>
 </html>

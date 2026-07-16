@@ -130,6 +130,18 @@ async def update_client_influencer(id: int, req: dict):
         raise HTTPException(status_code=400, detail="No allowed fields.")
     return await sb_patch("paid_influencers", id, allowed)
 
+@app.get("/api/client/calendar")
+async def get_client_calendar():
+    """Returns content calendar entries for the client view (no auth required)."""
+    rows = await sb_get("content_calendar",
+        f"?client=eq.{config.CLIENT}&order=scheduled_date.asc")
+    influencers = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&select=id,name,ig_handle,tt_handle")
+    inf_map = {i["id"]: i for i in influencers}
+    for r in rows:
+        r["influencer"] = inf_map.get(r["influencer_id"], {})
+    return rows
+
 @app.get("/client")
 def client_index():
     return FileResponse(os.path.join(STATIC, "client.html"))
