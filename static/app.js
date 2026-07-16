@@ -1047,6 +1047,8 @@ $("cal-prev").addEventListener("click", () => { if (--calM < 0) { calM=11; calY-
 $("cal-next").addEventListener("click", () => { if (++calM > 11) { calM=0; calY++; } renderCalendar(); });
 
 async function loadCalendar() {
+  // Rebuild all CR-linked calendar entries fresh from Content Review on every load
+  try { await apiPost("/api/content_calendar/sync_from_cr", {}); } catch { /* ignore */ }
   calRows = await apiGet("/api/content_calendar");
   renderCalendar();
 }

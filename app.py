@@ -385,6 +385,71 @@ async def delete_content_calendar(id: int, password: str = ""):
     await sb_delete("content_calendar", id)
     return {"ok": True}
 
+@app.post("/api/content_calendar/sync_from_cr")
+async def sync_calendar_from_cr(req: dict):
+    """Rebuild all CR-linked calendar entries fresh from Content Review.
+    Deletes stale entries and recreates them so calendar always matches CR exactly."""
+    import json as _json
+    from collections import defaultdict
+    check_auth(req.pop("password", None))
+
+    cr_rows = await sb_get("content_review",
+        f"?client=eq.{config.CLIENT}&order=id.asc")
+
+    # Backfill is_collab from post_details (same as get_content_review)
+    plans    = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}")
+    all_infs = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&select=id,ig_handle")
+    id_to_handle = {i["id"]: (i.get("ig_handle") or "").lower() for i in all_infs}
+    handle_to_plan = _best_plan(plans, id_to_handle)
+    CR_TYPE_KEY = {"IG Feed":"ig_feed","IG Reel":"ig_reel","IG Story":"ig_story","TikTok":"tt"}
+    counters: dict = defaultdict(int)
+    for r in cr_rows:
+        if not r.get("is_collab"):
+            h  = id_to_handle.get(r["influencer_id"], "")
+            pd = (handle_to_plan.get(h) or {}).get("post_details") or {}
+            k  = CR_TYPE_KEY.get(r.get("deliverable_type",""), "")
+            gk = (h, r.get("deliverable_type",""))
+            idx = counters[gk]; counters[gk] += 1
+            posts = pd.get(k, [])
+            if idx < len(posts):
+                r["is_collab"] = posts[idx].get("is_collab", False)
+
+    # Delete all existing CR-linked calendar entries
+    linked = await sb_get("content_calendar",
+        f"?client=eq.{config.CLIENT}&content_review_id=not.is.null")
+    for cal in linked:
+        await sb_delete("content_calendar", cal["id"])
+
+    created = 0
+    for r in cr_rows:
+        del_type = r.get("deliverable_type","")
+        del_qty  = _json.dumps({
+            "feed":   1 if del_type=="IG Feed"  else 0,
+            "reel":   1 if del_type=="IG Reel"  else 0,
+            "story":  1 if del_type=="IG Story" else 0,
+            "tiktok": 1 if del_type=="TikTok"   else 0,
+        })
+        base = {
+            "client": config.CLIENT, "influencer_id": r["influencer_id"],
+            "deliverable": del_qty,  "content_review_id": r["id"],
+        }
+        note = f"cr:{r['id']}"
+        if r.get("content_due_date"):
+            await sb_post("content_calendar", {**base,
+                "scheduled_date": r["content_due_date"],
+                "notes": f"{note}|type:due", "approved": False, "collab": False})
+            created += 1
+        if r.get("live_date"):
+            await sb_post("content_calendar", {**base,
+                "scheduled_date": r["live_date"],
+                "notes": f"{note}|type:live",
+                "approved": r.get("approved_by_client", False) or False,
+                "collab":   r.get("is_collab", False) or False})
+            created += 1
+
+    return {"deleted": len(linked), "created": created}
+
 # ── Shared helper: pick the best paid_plan record for a handle ────────────────
 def _best_plan(plans: list, id_to_handle: dict) -> dict:
     """Returns handle → best plan. Prefers plan with post_details, then highest
