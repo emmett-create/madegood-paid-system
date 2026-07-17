@@ -124,6 +124,16 @@ async def get_campaigns():
             seen.add(c); result.append(c)
     return sorted(result)
 
+@app.delete("/api/campaigns/{name}")
+async def delete_campaign(name: str, password: str = ""):
+    """Remove a campaign option by clearing it from all creators that have it."""
+    check_auth(password)
+    rows = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&campaign=eq.{name}&select=id")
+    for r in rows:
+        await sb_patch("paid_influencers", r["id"], {"campaign": None})
+    return {"cleared": len(rows)}
+
 @app.get("/api/client/influencers")
 async def get_client_influencers():
     """Public-ish endpoint for client view — returns EXT creators only."""
