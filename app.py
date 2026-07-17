@@ -192,8 +192,22 @@ class InfluencerIn(BaseModel):
 
 @app.get("/api/influencers")
 async def get_influencers(list_type: str = "INT"):
-    return await sb_get("paid_influencers",
+    rows = await sb_get("paid_influencers",
         f"?client=eq.{config.CLIENT}&list_type=eq.{list_type}&order=name.asc")
+    # Backfill campaign from any same-handle record so INT/EXT always show the same value
+    all_camp = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&campaign=not.is.null&select=ig_handle,campaign")
+    handle_to_camp: dict = {}
+    for r in all_camp:
+        h = (r.get("ig_handle") or "").lower()
+        if h and h not in handle_to_camp:
+            handle_to_camp[h] = r["campaign"]
+    for r in rows:
+        if not r.get("campaign"):
+            h = (r.get("ig_handle") or "").lower()
+            if h in handle_to_camp:
+                r["campaign"] = handle_to_camp[h]
+    return rows
 
 @app.post("/api/influencers")
 async def add_influencer(req: InfluencerIn):
@@ -208,6 +222,19 @@ async def add_influencer(req: InfluencerIn):
 async def update_influencer(id: int, req: dict):
     check_auth(req.pop("password", None))
     result = await sb_patch("paid_influencers", id, req)
+
+    # Sync campaign across all records with the same ig_handle
+    if "campaign" in req:
+        try:
+            inf_rec = await sb_get("paid_influencers", f"?id=eq.{id}&select=ig_handle")
+            handle = (inf_rec[0].get("ig_handle") or "").strip() if inf_rec else ""
+            if handle:
+                others = await sb_get("paid_influencers",
+                    f"?ig_handle=eq.{handle}&id=neq.{id}&select=id")
+                for o in others:
+                    await sb_patch("paid_influencers", o["id"], {"campaign": req["campaign"]})
+        except Exception:
+            pass
 
     # When setting in_paid_plan=True, migrate any existing plan records from the
     # matching INT influencer to this EXT influencer so Paid Plan can find them directly
@@ -265,9 +292,14 @@ async def get_paid_plan():
         if p["influencer_id"] not in plan_map:
             plan_map[p["influencer_id"]] = p
 
-    # Build handle → plan lookup for cross-list matching (INT plan ↔ EXT creator)
+    # Build handle → plan lookup and handle → campaign (campaign may be on INT while in_paid_plan is on EXT)
     all_infs = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,ig_handle")
+        f"?client=eq.{config.CLIENT}&select=id,ig_handle,campaign")
+    handle_to_campaign: dict = {}
+    for i in all_infs:
+        h = (i.get("ig_handle") or "").lower()
+        if h and i.get("campaign") and h not in handle_to_campaign:
+            handle_to_campaign[h] = i["campaign"]
     inf_id_to_handle = {i["id"]: (i.get("ig_handle") or "").lower() for i in all_infs}
     handle_to_plan = {}
     for p in plans:
@@ -291,7 +323,7 @@ async def get_paid_plan():
                 "tt_url": inf.get("tt_url"),
                 "ig_followers": inf.get("ig_followers"),
                 "tt_followers": inf.get("tt_followers"),
-                "campaign": inf.get("campaign"),
+                "campaign": inf.get("campaign") or handle_to_campaign.get((inf.get("ig_handle") or "").lower()),
             },
             "status": p.get("status"),
             "campaign": p.get("campaign"),
