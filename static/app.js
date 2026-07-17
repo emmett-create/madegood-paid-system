@@ -88,7 +88,7 @@ async function refreshCampaignDatalist() {
   try {
     const campaigns = await apiGet("/api/campaigns");
     const dl = document.getElementById("campaign-datalist");
-    if (dl) dl.innerHTML = (campaigns || []).map(c => `<option value="${esc(c)}">`).join("");
+    if (dl) dl.innerHTML = (campaigns || []).map(c => `<option value="${esc(c)}"></option>`).join("");
   } catch { /* ignore */ }
 }
 
@@ -449,6 +449,7 @@ function calcTier(igFol, ttFol) {
 }
 
 function openInfluencerModal(existing) {
+  refreshCampaignDatalist(); // ensure campaign options are fresh
   const isEdit = !!existing;
   const e = existing || {};
   const preTier   = e.tier || calcTier(e.ig_followers, e.tt_followers);
