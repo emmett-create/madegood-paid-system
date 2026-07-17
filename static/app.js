@@ -1029,7 +1029,8 @@ async function openPaidPlanModal(row) {
 // ── 4. Content Calendar ───────────────────────────────────────────────────────
 let calY = new Date().getFullYear();
 let calM = new Date().getMonth();
-let calRows = [];
+let calRows = [];      // manual calendar entries only
+let crCalRows = [];    // content review rows (source of truth for calendar)
 let calView = "cal";
 
 document.querySelectorAll(".view-btn").forEach(btn => {
@@ -1046,10 +1047,22 @@ document.querySelectorAll(".view-btn").forEach(btn => {
 $("cal-prev").addEventListener("click", () => { if (--calM < 0) { calM=11; calY--; } renderCalendar(); });
 $("cal-next").addEventListener("click", () => { if (++calM > 11) { calM=0; calY++; } renderCalendar(); });
 
+function crDelLabel(type) {
+  if (type === "IG Reel")  return "1x Reel";
+  if (type === "IG Story") return "1x Story";
+  if (type === "IG Feed")  return "1x Feed";
+  if (type === "TikTok")   return "1x TT";
+  return type || "—";
+}
+
 async function loadCalendar() {
-  // Rebuild all CR-linked calendar entries fresh from Content Review on every load
-  try { await apiPost("/api/content_calendar/sync_from_cr", {}); } catch { /* ignore */ }
-  calRows = await apiGet("/api/content_calendar");
+  // Load manual entries (no content_review_id) + CR rows directly — no sync needed
+  const [allCal, cr] = await Promise.all([
+    apiGet("/api/content_calendar"),
+    apiGet("/api/content_review"),
+  ]);
+  calRows   = (allCal || []).filter(r => !r.content_review_id);
+  crCalRows = cr || [];
   renderCalendar();
 }
 
@@ -1062,11 +1075,39 @@ function renderCalendar() {
   const pad = n => String(n).padStart(2,"0");
 
   const byDay = {};
+  const push = (ds, evt) => { (byDay[ds] = byDay[ds]||[]).push(evt); };
+
+  // Manual calendar entries (no CR link)
   calRows.forEach(r => {
     if (!r.scheduled_date) return;
-    const [y,m,d] = r.scheduled_date.split("-");
+    const [y,m] = r.scheduled_date.split("-");
     if (parseInt(y)===calY && parseInt(m)-1===calM) {
-      (byDay[r.scheduled_date] = byDay[r.scheduled_date]||[]).push(r);
+      push(r.scheduled_date, {
+        influencer_id: r.influencer_id, influencer: r.influencer||{},
+        label: fmtDeliverable(r.deliverable),
+        isDue: (r.notes||"").includes("type:due"),
+        collab: r.collab||false, approved: r.approved||false, manual: true, id: r.id,
+      });
+    }
+  });
+
+  // CR rows → calendar events directly (always accurate, no sync needed)
+  crCalRows.forEach(r => {
+    const inf  = r.influencer || {};
+    const lbl  = crDelLabel(r.deliverable_type);
+    const isCollab  = r.is_collab || false;
+    const isApproved = r.approved_by_client || false;
+    if (r.content_due_date) {
+      const [y,m] = r.content_due_date.split("-");
+      if (parseInt(y)===calY && parseInt(m)-1===calM)
+        push(r.content_due_date, {influencer_id: r.influencer_id, influencer: inf,
+          label: lbl, isDue: true, collab: false, approved: false});
+    }
+    if (r.live_date) {
+      const [y,m] = r.live_date.split("-");
+      if (parseInt(y)===calY && parseInt(m)-1===calM)
+        push(r.live_date, {influencer_id: r.influencer_id, influencer: inf,
+          label: lbl, isDue: false, collab: isCollab, approved: isApproved});
     }
   });
 
@@ -1088,14 +1129,15 @@ function renderCalendar() {
           });
           return Object.values(groups).map(g => {
             const chips = g.entries.map(e => {
-              const isDue  = (e.notes||"").includes("type:due");
-              const cls    = isDue ? "cal-entry cal-entry-due"
-                           : e.approved ? "cal-entry cal-entry-live-approved"
-                           : "cal-entry cal-entry-live-pending";
-              const collab = !isDue && e.collab;
-              const style  = collab ? ' style="background:#6b3fa0;color:#fff"' : '';
-              const prefix = collab ? "C· " : "";
-              return `<div class="${cls}"${style}>${prefix}${esc(fmtDeliverable(e.deliverable))}</div>`;
+              // Purple = collab + approved; Red = not approved (incl. unapproved collab); Green = approved non-collab
+              const collabApproved = !e.isDue && e.collab && e.approved;
+              const cls  = e.isDue           ? "cal-entry cal-entry-due"
+                         : collabApproved    ? "cal-entry cal-entry-live-approved"
+                         : e.approved        ? "cal-entry cal-entry-live-approved"
+                         : "cal-entry cal-entry-live-pending";
+              const style  = collabApproved ? ' style="background:#6b3fa0;color:#fff"' : '';
+              const prefix = collabApproved ? "C· " : "";
+              return `<div class="${cls}"${style}>${prefix}${esc(e.label || fmtDeliverable(e.deliverable))}</div>`;
             }).join("");
             const name = g.inf.name || g.inf.ig_handle || "";
             return `<div style="margin-bottom:3px">${chips}<div style="font-size:8px;color:var(--dim);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(name)}</div></div>`;
