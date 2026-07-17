@@ -112,6 +112,18 @@ def auth_client(req: PwCheck):
         raise HTTPException(status_code=401, detail="Wrong password.")
     return {"ok": True}
 
+@app.get("/api/campaigns")
+async def get_campaigns():
+    """Returns all distinct campaign values used across the master list."""
+    rows = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&campaign=not.is.null&select=campaign")
+    seen, result = set(), []
+    for r in rows:
+        c = (r.get("campaign") or "").strip()
+        if c and c not in seen:
+            seen.add(c); result.append(c)
+    return sorted(result)
+
 @app.get("/api/client/influencers")
 async def get_client_influencers():
     """Public-ish endpoint for client view — returns EXT creators only."""
@@ -279,6 +291,7 @@ async def get_paid_plan():
                 "tt_url": inf.get("tt_url"),
                 "ig_followers": inf.get("ig_followers"),
                 "tt_followers": inf.get("tt_followers"),
+                "campaign": inf.get("campaign"),
             },
             "status": p.get("status"),
             "campaign": p.get("campaign"),

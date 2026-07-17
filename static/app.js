@@ -84,8 +84,17 @@ function influencerOptions(filter) {
 // ── 1. Master List ────────────────────────────────────────────────────────────
 let mlSortCol = "name", mlSortDir = "asc";
 
+async function refreshCampaignDatalist() {
+  try {
+    const campaigns = await apiGet("/api/campaigns");
+    const dl = document.getElementById("campaign-datalist");
+    if (dl) dl.innerHTML = (campaigns || []).map(c => `<option value="${esc(c)}">`).join("");
+  } catch { /* ignore */ }
+}
+
 async function loadMasterList() {
   allInfluencers = [];  // reset cache
+  refreshCampaignDatalist();
   const [data, extData] = await Promise.all([
     apiGet(`/api/influencers?list_type=${currentListType}`),
     currentListType === "INT" ? apiGet("/api/influencers?list_type=EXT") : Promise.resolve([]),
@@ -505,7 +514,7 @@ function openInfluencerModal(existing) {
       </div>
       <div class="fld"><label>Email</label><input type="email" id="mf-email" value="${esc(e.email||"")}"></div>
     </div>
-    <div class="fld"><label>Campaign</label><input id="mf-campaign" value="${esc(e.campaign||"")}"></div>
+    <div class="fld"><label>Campaign</label><input id="mf-campaign" list="campaign-datalist" value="${esc(e.campaign||"")}" placeholder="Type or select…" autocomplete="off"></div>
     <div class="fld"><label>Audience Age Breakdown</label><input id="mf-age" value="${esc(e.audience_age||"")}"></div>
     <div class="fld"><label>ShopMy Conversion Data</label><input id="mf-shopmy" value="${esc(e.shopmy_data||"")}" placeholder="Average $ per Month" style="background:var(--panel);"></div>
     <div class="fld"><label>Notes</label><textarea id="mf-ext-feedback" rows="2">${esc(e.external_feedback||"")}</textarea></div>
@@ -753,7 +762,7 @@ async function loadPaidPlan() {
         </select>
       </td>
       <td style="white-space:nowrap"><strong>${esc(inf.name||"Unknown")}</strong></td>
-      <td style="white-space:nowrap;font-size:11px">${esc(fmt_||"")}</td>
+      <td style="font-size:11px;color:var(--dim)">${esc(inf.campaign||"—")}</td>
       <td>${inf.ig_handle ? `<a href="${esc(inf.ig_url||`https://instagram.com/${inf.ig_handle}`)}" target="_blank" style="color:var(--red)">@${esc(inf.ig_handle)}</a>` : "—"}</td>
       <td style="color:var(--dim)">${(r.ig_reels_impressions||0).toLocaleString() || "—"}</td>
       <td>${inf.tt_handle ? `<a href="${esc(inf.tt_url||`https://tiktok.com/@${inf.tt_handle}`)}" target="_blank" style="color:var(--red)">@${esc(inf.tt_handle)}</a>` : "—"}</td>
