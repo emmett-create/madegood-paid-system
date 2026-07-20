@@ -818,28 +818,43 @@ async def archive_debug():
     except Exception as e:
         results["campaigns_error"] = str(e)
 
-    # Test 2: items query with no filter (just workspace header)
+    # Test 2: introspect Item fields to find correct names
     try:
-        items_data = await archive_query("""
+        intro = await archive_query("""
         query {
-          items(first: 5, sorting: { sortKey: PUBLISHED_AT, sortOrder: DESC }) {
-            pageInfo { hasNextPage }
-            nodes {
-              originalUrl archivePublicUrl publishedAt
-              socialProfile { accountName platform followers }
-            }
-          }
+          item_fields: __type(name: "Item") { fields { name } }
+          sort_keys:   __type(name: "ItemSortKey") { enumValues { name } }
+          profile_fields: __type(name: "SocialProfile") { fields { name } }
         }""", {})
-        nodes = items_data.get("items", {}).get("nodes", [])
-        results["items_no_filter_count"] = len(nodes)
-        results["items_sample"] = [
-            {"handle": n.get("socialProfile", {}).get("accountName"),
-             "url": n.get("archivePublicUrl") or n.get("originalUrl"),
-             "date": n.get("publishedAt", "")[:10]}
-            for n in nodes
-        ]
+        results["item_fields"]    = [f["name"] for f in (intro.get("item_fields") or {}).get("fields") or []]
+        results["sort_keys"]      = [v["name"] for v in (intro.get("sort_keys") or {}).get("enumValues") or []]
+        results["profile_fields"] = [f["name"] for f in (intro.get("profile_fields") or {}).get("fields") or []]
     except Exception as e:
-        results["items_no_filter_error"] = str(e)
+        results["introspect_error"] = str(e)
+
+    # Test 3: minimal items query using first campaign
+    if results.get("campaigns_count", 0) > 0:
+        cid = campaigns[0]["id"]
+        try:
+            items_data = await archive_query("""
+            query($cid: ID!) {
+              items(first: 3, filter: { campaignsIds: [$cid] }) {
+                nodes {
+                  originalUrl archivePublicUrl
+                  socialProfile { accountName followers }
+                  currentEngagement { impressions likes comments shares saves earnedMediaValue }
+                }
+              }
+            }""", {"cid": cid})
+            nodes = items_data.get("items", {}).get("nodes", [])
+            results["items_sample_count"] = len(nodes)
+            results["items_sample"] = [
+                {"handle": n.get("socialProfile", {}).get("accountName"),
+                 "url": n.get("archivePublicUrl") or n.get("originalUrl")}
+                for n in nodes
+            ]
+        except Exception as e:
+            results["items_sample_error"] = str(e)
 
     return results
 
@@ -881,16 +896,15 @@ async def archive_sync(req: dict):
     campaigns_data = await archive_query(campaigns_q, {})
     campaigns = campaigns_data.get("campaigns", {}).get("nodes", [])
 
-    # Step 2: Query posts per campaign (campaignsIds filter is confirmed working)
+    # Step 2: Query posts per campaign — no sorting, no publishedAt/platform (not valid fields)
     items_q = """
     query($cid: ID!, $after: String) {
       items(first: 100, after: $after,
-            filter: { campaignsIds: [$cid] },
-            sorting: { sortKey: PUBLISHED_AT, sortOrder: DESC }) {
+            filter: { campaignsIds: [$cid] }) {
         pageInfo { hasNextPage endCursor }
         nodes {
-          originalUrl archivePublicUrl publishedAt
-          socialProfile { accountName platform followers }
+          originalUrl archivePublicUrl
+          socialProfile { accountName followers }
           currentEngagement { impressions likes comments shares saves earnedMediaValue }
         }
       }
@@ -927,7 +941,6 @@ async def archive_sync(req: dict):
         url      = (post.get("archivePublicUrl") or post.get("originalUrl") or "").rstrip("/")
         handle   = (sp.get("accountName") or "").lower().lstrip("@")
         creator  = handle_to_creator.get(handle)
-        platform = sp.get("platform", "")
 
         # Skip if no URL or creator not in master list
         if not url or not creator:
@@ -946,27 +959,24 @@ async def archive_sync(req: dict):
         }
 
         if url in lp_by_url:
-            # Update existing entry metrics
             await sb_patch("live_posts", lp_by_url[url]["id"], metrics)
             synced += 1
-        elif url not in existing_urls and post.get("publishedAt"):
-            # Auto-fill from paid system data
+        elif url not in existing_urls:
             plan          = plan_map.get(creator["id"], {})
             final_rate    = plan.get("accepted_offer")
-            deliverable   = detect_deliverable_type(url, platform)
+            deliverable   = detect_deliverable_type(url, "")
             usage         = creator.get("outreach_usage") or plan.get("usage")
             campaign      = creator.get("campaign") or plan.get("campaign")
 
             await sb_post("live_posts", {
                 "client":           config.CLIENT,
                 "influencer_id":    creator["id"],
-                "live_date":        post["publishedAt"][:10],
                 "live_link":        url,
                 "campaign":         campaign,
                 "deliverable_type": deliverable,
                 "usage":            usage,
                 "final_rate":       final_rate,
-                "total_cost":       final_rate,  # cost = agreed rate
+                "total_cost":       final_rate,
                 **metrics,
             })
             existing_urls.add(url)
