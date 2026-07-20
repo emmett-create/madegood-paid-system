@@ -842,7 +842,7 @@ async def archive_debug():
                 nodes {
                   originalUrl archivePublicUrl
                   socialProfile { accountName followers }
-                  currentEngagement { impressions likes comments shares saves earnedMediaValue }
+                  currentEngagement { impressions likes comments shares earnedMediaValue }
                 }
               }
             }""", {"cid": cid})
@@ -896,7 +896,7 @@ async def archive_sync(req: dict):
     campaigns_data = await archive_query(campaigns_q, {})
     campaigns = campaigns_data.get("campaigns", {}).get("nodes", [])
 
-    # Step 2: Query posts per campaign — no sorting, no publishedAt/platform (not valid fields)
+    # Step 2: Query posts per campaign
     items_q = """
     query($cid: ID!, $after: String) {
       items(first: 100, after: $after,
@@ -905,7 +905,7 @@ async def archive_sync(req: dict):
         nodes {
           originalUrl archivePublicUrl
           socialProfile { accountName followers }
-          currentEngagement { impressions likes comments shares saves earnedMediaValue }
+          currentEngagement { impressions likes comments shares earnedMediaValue }
         }
       }
     }"""
@@ -950,12 +950,10 @@ async def archive_sync(req: dict):
         likes    = int(eng.get("likes") or 0)
         comments = int(eng.get("comments") or 0)
         shares   = int(eng.get("shares") or 0)
-        saves    = int(eng.get("saves") or 0)
-        total_eng = likes + comments + shares + saves
 
         metrics = {
             "total_views": views, "likes": likes,
-            "comments": comments, "shares": shares, "saves": saves,
+            "comments": comments, "shares": shares,
         }
 
         if url in lp_by_url:
