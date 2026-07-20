@@ -669,7 +669,7 @@ async def _sync_content_review():
     deleted = 0
 
     for inf in paid_infs:
-        handle = (inf.get("ig_handle") or "").lower()
+        handle = (inf.get("ig_handle") or "").strip().lower()
         if not handle or handle in seen_handles:
             continue
         seen_handles.add(handle)
@@ -679,22 +679,26 @@ async def _sync_content_review():
 
         for del_type, qty_field in CR_TYPES:
             expected = plan.get(qty_field) or 0
+            # Always re-read current from groups (updated live as rows are added)
             current  = groups.get((handle, del_type), [])
             count    = len(current)
 
             if count < expected:
                 for _ in range(expected - count):
-                    await sb_post("content_review", {
-                        "client":          config.CLIENT,
-                        "influencer_id":   inf["id"],
+                    new_row = await sb_post("content_review", {
+                        "client":           config.CLIENT,
+                        "influencer_id":    inf["id"],
                         "deliverable_type": del_type,
                     })
+                    # Update groups immediately so any re-visit of same handle sees new rows
+                    groups[(handle, del_type)].append(new_row or {})
                     added += 1
             elif count > expected:
                 # Remove only blank excess rows — newest first so filled rows survive
                 for r in list(reversed(current))[:(count - expected)]:
                     if is_blank(r):
                         await sb_delete("content_review", r["id"])
+                        groups[(handle, del_type)].remove(r)
                         deleted += 1
 
     return {"added": added, "deleted": deleted}

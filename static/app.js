@@ -912,6 +912,8 @@ async function loadOutreach() {
     }
     // Invalidate ppRows so Paid Plan reloads fresh data on next visit
     ppRows = [];
+    // Sync Content Review rows to match new deliverable quantities (fire and forget)
+    apiPost("/api/content_review/auto_sync", {}).catch(() => {});
   };
 
   document.querySelectorAll(".or-status-sel").forEach(s => s.addEventListener("change", () => saveField(s.dataset.id, "outreach_status", s.value)));
@@ -1266,6 +1268,7 @@ async function openPaidPlanModal(row) {
     }
 
     closeModal(); loadPaidPlan();
+    apiPost("/api/content_review/auto_sync", {}).catch(() => {});
   });
 
   // Live cost calculator — wires up after modal renders
