@@ -533,6 +533,108 @@ $("ml-tally-add")?.addEventListener("click", () => {
   sel.focus();
 });
 
+// ── Paid Plan Pivot Table ─────────────────────────────────────────────────────
+let ppTallyDimensions = [];
+let ppTallyData = [];
+let ppCrMonthMap = {}; // influencer handle → earliest live month from CR
+
+const PP_TALLY_DIMS = {
+  campaign:   "Campaign",
+  month_live: "Month Live",
+  status:     "Status",
+  tier:       "Tier",
+  vertical:   "Vertical",
+  collab:     "Collab Post",
+  usage:      "Usage",
+};
+
+function ppTallyKeyOf(r) {
+  return ppTallyDimensions.map(d => {
+    if (d === "month_live") return ppCrMonthMap[(r.influencer?.ig_handle||"").toLowerCase()] || "—";
+    if (d === "campaign")   return r.influencer?.campaign || "—";
+    if (d === "status")     return r.status || "—";
+    if (d === "tier")       return r.influencer?.tier || "—";
+    if (d === "vertical")   return r.influencer?.vertical || "—";
+    if (d === "collab")     return ppRowHasCollab(r) ? "Yes" : "No";
+    if (d === "usage")      return ppRowUsage(r) || "—";
+    return "—";
+  }).join("|||");
+}
+
+function ppRowHasCollab(r) {
+  const pd = r.post_details || {};
+  return Object.values(pd).flat().some(p => p?.is_collab);
+}
+
+function ppRowUsage(r) {
+  const pd = r.post_details || {};
+  const all = new Set(Object.values(pd).flat().flatMap(p => p?.usage || []));
+  return [...all].join(", ") || null;
+}
+
+function renderPpTallyChips() {
+  const chips = $("pp-tally-chips");
+  if (!chips) return;
+  chips.innerHTML = ppTallyDimensions.map(d => `
+    <span style="background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px">
+      ${PP_TALLY_DIMS[d] || d}
+      <button onclick="removePpTallyDim('${d}')" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:12px;padding:0;line-height:1">×</button>
+    </span>`).join("");
+}
+
+window.removePpTallyDim = (dim) => {
+  ppTallyDimensions = ppTallyDimensions.filter(d => d !== dim);
+  renderPpTallyChips();
+  renderPpTally();
+};
+
+function renderPpTally() {
+  const body = $("pp-tally-body");
+  if (!body) return;
+  if (!ppTallyDimensions.length) {
+    body.innerHTML = `<p style="color:var(--dim);font-size:12px;padding:4px 0">Click <strong>+ Add Row</strong> to choose a dimension.</p>`;
+    return;
+  }
+  if (!ppTallyData.length) return;
+  const SEP = "|||";
+  const counts = {};
+  ppTallyData.forEach(r => { const k = ppTallyKeyOf(r); counts[k] = (counts[k]||0)+1; });
+  const allKeys = Object.keys(counts).sort();
+  const total = Object.values(counts).reduce((a,b)=>a+b,0);
+  const thS = "background:var(--panel2);color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.4px;padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap";
+  const tdS = "padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px";
+  const headers = ppTallyDimensions.map(d=>`<th style="${thS}">${PP_TALLY_DIMS[d]||d}</th>`).join("")
+    + `<th style="${thS};text-align:center">Count</th>`;
+  const rows = allKeys.map(k => {
+    const vals = k.split(SEP);
+    const n = counts[k];
+    const pct = total ? Math.round(n/total*100) : 0;
+    return `<tr>${vals.map(v=>`<td style="${tdS}">${esc(v)}</td>`).join("")}
+      <td style="${tdS};text-align:center;font-weight:600;color:var(--red)">${n} <span style="font-size:10px;color:var(--dim)">(${pct}%)</span></td>
+    </tr>`;
+  }).join("");
+  body.innerHTML = `<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>${headers}</tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr>${ppTallyDimensions.map(()=>`<td style="${tdS};font-weight:700">Total</td>`).join("")}
+        <td style="${tdS};text-align:center;font-weight:700">${total}</td></tr></tfoot>
+    </table></div>`;
+}
+
+$("pp-tally-add")?.addEventListener("click", () => {
+  const available = Object.entries(PP_TALLY_DIMS).filter(([k]) => !ppTallyDimensions.includes(k));
+  if (!available.length) return;
+  const sel = document.createElement("select");
+  sel.style.cssText = "background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 10px;font-size:12px;margin-left:6px";
+  sel.innerHTML = `<option value="">Pick dimension…</option>` + available.map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
+  sel.onchange = () => {
+    if (sel.value) { ppTallyDimensions.push(sel.value); sel.remove(); renderPpTallyChips(); renderPpTally(); }
+  };
+  $("pp-tally-add").after(sel);
+  sel.focus();
+});
+
 // List toggle
 document.querySelectorAll(".list-btn").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -864,6 +966,28 @@ async function loadPaidPlan() {
   const search = $("pp-search")?.value.toLowerCase() || "";
   const status = $("pp-filter-status")?.value || "";
   ppRows = data;
+
+  // Build month live map from CR rows for the pivot table
+  try {
+    const crRows = await apiGet("/api/content_review");
+    ppCrMonthMap = {};
+    crRows.forEach(r => {
+      if (!r.live_date) return;
+      const h = (r.influencer?.ig_handle || "").toLowerCase();
+      if (!h) return;
+      const [y, m] = r.live_date.split("-");
+      const month = new Date(parseInt(y), parseInt(m)-1, 1).toLocaleString("en-US", {month:"long", year:"numeric"});
+      if (!ppCrMonthMap[h] || r.live_date < ppCrMonthMap[h+"_raw"]) {
+        ppCrMonthMap[h] = month;
+        ppCrMonthMap[h+"_raw"] = r.live_date;
+      }
+    });
+  } catch { /* ignore */ }
+
+  ppTallyData = ppRows;
+  renderPpTallyChips();
+  renderPpTally();
+
   let rows = ppRows;
   if (search) rows = rows.filter(r => (r.influencer?.name||"").toLowerCase().includes(search));
   if (status) rows = rows.filter(r => r.status === status);

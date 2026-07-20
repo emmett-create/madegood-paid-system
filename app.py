@@ -333,6 +333,8 @@ async def get_paid_plan():
                 "tt_url": inf.get("tt_url"),
                 "ig_followers": inf.get("ig_followers"),
                 "tt_followers": inf.get("tt_followers"),
+                "tier": inf.get("tier"),
+                "vertical": inf.get("vertical") or inf.get("archetype"),
                 "campaign": inf.get("campaign") or handle_to_campaign.get((inf.get("ig_handle") or "").lower()),
             },
             "status": p.get("status"),
@@ -545,9 +547,22 @@ async def get_content_review():
         f"ig_followers,tt_followers,tier,vertical,archetype,campaign,location,gender")
     inf_map = {i["id"]: i for i in influencers}
 
+    # Build handle → campaign backfill (same as get_influencers — campaign may be on INT not EXT)
+    all_infs_camp = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&select=id,ig_handle,campaign")
+    handle_to_campaign_cr: dict = {}
+    for i in all_infs_camp:
+        h = (i.get("ig_handle") or "").lower()
+        if h and i.get("campaign") and h not in handle_to_campaign_cr:
+            handle_to_campaign_cr[h] = i["campaign"]
+    for inf in inf_map.values():
+        if not inf.get("campaign"):
+            h = (inf.get("ig_handle") or "").lower()
+            if h in handle_to_campaign_cr:
+                inf["campaign"] = handle_to_campaign_cr[h]
+
     plans = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}")
-    all_infs = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,ig_handle")
+    all_infs = all_infs_camp
     id_to_handle = {i["id"]: (i.get("ig_handle") or "").lower() for i in all_infs}
     handle_to_plan = _best_plan(plans, id_to_handle)
 
@@ -788,6 +803,45 @@ def detect_deliverable_type(url: str, platform: str) -> str:
     if "/stories/" in url_lower:
         return "IG Story"
     return "IG Feed"
+
+@app.get("/api/archive_debug")
+async def archive_debug():
+    """Diagnostic endpoint — tests Archive API connection and returns raw results."""
+    results = {"token": ARCHIVE_TOKEN[:8] + "...", "workspace": ARCHIVE_WORKSPACE}
+
+    # Test 1: campaigns query
+    try:
+        campaigns_data = await archive_query("query { campaigns(first: 50) { nodes { id name } } }", {})
+        campaigns = campaigns_data.get("campaigns", {}).get("nodes", [])
+        results["campaigns_count"] = len(campaigns)
+        results["campaigns"] = [c.get("name") for c in campaigns]
+    except Exception as e:
+        results["campaigns_error"] = str(e)
+
+    # Test 2: items query with no filter (just workspace header)
+    try:
+        items_data = await archive_query("""
+        query {
+          items(first: 5, sorting: { sortKey: PUBLISHED_AT, sortOrder: DESC }) {
+            pageInfo { hasNextPage }
+            nodes {
+              originalUrl archivePublicUrl publishedAt
+              socialProfile { accountName platform followers }
+            }
+          }
+        }""", {})
+        nodes = items_data.get("items", {}).get("nodes", [])
+        results["items_no_filter_count"] = len(nodes)
+        results["items_sample"] = [
+            {"handle": n.get("socialProfile", {}).get("accountName"),
+             "url": n.get("archivePublicUrl") or n.get("originalUrl"),
+             "date": n.get("publishedAt", "")[:10]}
+            for n in nodes
+        ]
+    except Exception as e:
+        results["items_no_filter_error"] = str(e)
+
+    return results
 
 @app.post("/api/archive_sync")
 async def archive_sync(req: dict):
