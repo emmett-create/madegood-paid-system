@@ -940,17 +940,30 @@ async function loadOutreach() {
 
 // ── 3. Paid Plan ──────────────────────────────────────────────────────────────
 
-function calcEstCost(r) {
-  const ig   = r.ig_impressions || r.ig_reels_impressions || 0;
-  const igFeed  = (r.ig_feed_qty||0)  * ig * (r.ig_feed_cpm||0)  / 1000;
-  const igReel  = (r.ig_reel_qty||0)  * ig * (r.ig_reel_cpm||0)  / 1000;
-  const igStory = (r.ig_story_qty||0) * ig * (r.ig_story_cpm||0) / 1000;
-  const tt      = (r.tt_qty||0) * (r.tt_impressions||0) * (r.tt_cpm||0) / 1000;
-  const base    = igFeed + igReel + igStory + tt;
-  const org     = base * (r.organic_pct||0) / 100;
-  const paid    = base * (r.paid_pct||0) / 100;
+// CPV Low/High ratios based on Suzanne's rates
+const IG_CPV_LOW  = 0.12/0.14; // 6/7
+const IG_CPV_HIGH = 0.16/0.14; // 8/7
+const TT_CPV_LOW  = 0.10/0.12; // 5/6
+const TT_CPV_HIGH = 0.14/0.12; // 7/6
+
+function calcCpvCosts(r, variant = "standard") {
+  const ig    = r.ig_impressions || r.ig_reels_impressions || 0;
+  const ttImp = r.tt_impressions || 0;
+  const igLow  = variant === "low",  igHigh  = variant === "high";
+  const ttLow  = variant === "low",  ttHigh  = variant === "high";
+  const igMult = igLow ? IG_CPV_LOW : igHigh ? IG_CPV_HIGH : 1;
+  const ttMult = ttLow ? TT_CPV_LOW : ttHigh ? TT_CPV_HIGH : 1;
+  const feed  = (r.ig_feed_qty||0)  * ig    * (r.ig_feed_cpv||0)  * igMult;
+  const reel  = (r.ig_reel_qty||0)  * ig    * (r.ig_reel_cpv||0)  * igMult;
+  const story = (r.ig_story_qty||0) * ig    * (r.ig_story_cpv||0) * igMult;
+  const tt    = (r.tt_qty||0)       * ttImp * (r.tt_cpv||0)       * ttMult;
+  const base  = feed + reel + story + tt;
+  const org   = base * (r.organic_pct||0) / 100;
+  const paid  = base * (r.paid_pct||0)    / 100;
   return base + org + paid;
 }
+
+function calcEstCost(r) { return calcCpvCosts(r, "standard"); }
 
 const STATUS_BADGE = {
   "In Negotiations": "badge-negotiations",
@@ -1007,17 +1020,11 @@ async function loadPaidPlan() {
     const storyQty = r.ig_story_qty || 0;
     const ttQty    = r.tt_qty       || 0;
 
-    const igFeedCost  = feedQty  * igImp * (r.ig_feed_cpm||0)  / 1000;
-    const igReelCost  = reelQty  * igImp * (r.ig_reel_cpm||0)  / 1000;
-    const igStoryCost = storyQty * igImp * (r.ig_story_cpm||0) / 1000;
-    const ttCost      = ttQty * (r.tt_impressions||0) * (r.tt_cpm||0) / 1000;
-    const cpmEst      = igFeedCost + igReelCost + igStoryCost + ttCost;
-    const totalImpr   = (feedQty + reelQty + storyQty) * igImp + ttQty * (r.tt_impressions||0);
-    const orgPct      = r.organic_pct != null ? r.organic_pct : 10;
-    const paidPct     = r.paid_pct    != null ? r.paid_pct    : 30;
-    const orgD        = cpmEst * orgPct  / 100;
-    const paidD       = cpmEst * paidPct / 100;
-    const totalEst    = cpmEst + orgD + paidD;
+    const orgPct   = r.organic_pct != null ? r.organic_pct : 10;
+    const paidPct  = r.paid_pct    != null ? r.paid_pct    : 30;
+    const totalStd  = calcCpvCosts(r, "standard");
+    const totalLow  = calcCpvCosts(r, "low");
+    const totalHigh = calcCpvCosts(r, "high");
     return `<tr>
       <td>
         <select class="pp-status-sel" data-id="${r.id || ""}" data-idx="${i}" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;font-size:11px;font-weight:600;min-width:150px;${r.status==="Locked"?"color:var(--green)":r.status==="Offer Out"?"color:var(--blue)":r.status==="In Negotiations"?"color:var(--yellow)":"color:var(--dim)"}">
@@ -1037,23 +1044,16 @@ async function loadPaidPlan() {
       <td style="text-align:center">${reelQty  || `<span style="color:var(--dim)">—</span>`}</td>
       <td style="text-align:center">${storyQty || `<span style="color:var(--dim)">—</span>`}</td>
       <td style="text-align:center">${ttQty    || `<span style="color:var(--dim)">—</span>`}</td>
-      <td style="color:var(--yellow)">${r.ig_feed_cpm ? `$${r.ig_feed_cpm}` : "—"}</td>
-      <td style="color:var(--yellow)">${r.ig_reel_cpm ? `$${r.ig_reel_cpm}` : "—"}</td>
-      <td style="color:var(--yellow)">${r.ig_story_cpm ? `$${r.ig_story_cpm}` : "—"}</td>
-      <td style="color:var(--yellow)">${r.tt_cpm ? `$${r.tt_cpm}` : "—"}</td>
-      <td>${fC(igFeedCost)}</td>
-      <td>${fC(igReelCost)}</td>
-      <td>${fC(igStoryCost)}</td>
-      <td>${fC(ttCost)}</td>
-      <td style="font-weight:600">${fC(cpmEst)}</td>
-      <td style="color:var(--dim)">${totalImpr ? totalImpr.toLocaleString() : "—"}</td>
+      <td style="color:var(--yellow)">${r.ig_feed_cpv  ? `$${r.ig_feed_cpv}`  : "—"}</td>
+      <td style="color:var(--yellow)">${r.ig_reel_cpv  ? `$${r.ig_reel_cpv}`  : "—"}</td>
+      <td style="color:var(--yellow)">${r.ig_story_cpv ? `$${r.ig_story_cpv}` : "—"}</td>
+      <td style="color:var(--yellow)">${r.tt_cpv       ? `$${r.tt_cpv}`       : "—"}</td>
       <td>${fP(orgPct)}</td>
-      <td>${fC(orgD)}</td>
       <td>${fP(paidPct)}</td>
-      <td>${fC(paidD)}</td>
-      <td style="color:var(--red);font-weight:700">${fC(totalEst)}</td>
+      <td style="color:var(--dim)">${fC(totalLow)}</td>
+      <td style="color:var(--red);font-weight:700">${fC(totalStd)}</td>
+      <td style="color:var(--green)">${fC(totalHigh)}</td>
       <td>${fmtD(r.first_offer)}</td>
-      <td style="color:var(--dim)">${totalEst ? fC(totalEst * 0.6) : "—"}</td>
       <td>${fmtD(r.influencer_offer)}</td>
       <td>${fmtD(r.a8_counter)}</td>
       <td style="font-weight:600">${fmtD(r.accepted_offer)}</td>
@@ -1062,7 +1062,7 @@ async function loadPaidPlan() {
         ${r.id ? `<button class="btn-icon btn-del-pp" data-id="${r.id}" title="Clear plan data" style="color:#666">✕</button>` : ""}
       </td>
     </tr>`;
-  }).join("") : `<tr><td colspan="31" class="empty-cell">No creators in Paid Plan yet. Check the "Paid Plan" box on a creator in the Master Lists tab.</td></tr>`;
+  }).join("") : `<tr><td colspan="25" class="empty-cell">No creators in Paid Plan yet. Check the "Paid Plan" box on a creator in the Master Lists tab.</td></tr>`;
 
   document.querySelectorAll(".btn-edit-pp").forEach(b =>
     b.addEventListener("click", () => {
@@ -1187,10 +1187,10 @@ async function openPaidPlanModal(row) {
     </div>
     <div class="form-section">CPM Rates (benchmark defaults pre-filled)</div>
     <div class="form-grid-3">
-      <div class="fld"><label>IG Reel CPM ($)</label><input type="number" step="0.01" id="ppf-reel-cpm" value="${d(e.ig_reel_cpm, 29.50)}"></div>
-      <div class="fld"><label>IG Story CPM ($)</label><input type="number" step="0.01" id="ppf-story-cpm" value="${d(e.ig_story_cpm, 10.50)}"></div>
-      <div class="fld"><label>IG In-Feed CPM ($)</label><input type="number" step="0.01" id="ppf-feed-cpm" value="${d(e.ig_feed_cpm, 29.00)}"></div>
-      <div class="fld"><label>TT CPM ($)</label><input type="number" step="0.01" id="ppf-tt-cpm" value="${d(e.tt_cpm, 20.00)}"></div>
+      <div class="fld"><label>IG Reel CPV ($)</label><input type="number" step="0.01" id="ppf-reel-cpv" value="${d(e.ig_reel_cpv, 0.14)}"></div>
+      <div class="fld"><label>IG Story CPV ($)</label><input type="number" step="0.01" id="ppf-story-cpv" value="${d(e.ig_story_cpv, 0.14)}"></div>
+      <div class="fld"><label>IG In-Feed CPV ($)</label><input type="number" step="0.01" id="ppf-feed-cpv" value="${d(e.ig_feed_cpv, 0.14)}"></div>
+      <div class="fld"><label>TT CPV ($)</label><input type="number" step="0.01" id="ppf-tt-cpv" value="${d(e.tt_cpv, 0.12)}"></div>
     </div>
     <div class="form-section">Usage Rights + Negotiation</div>
     <div class="form-grid-3">
@@ -1226,10 +1226,10 @@ async function openPaidPlanModal(row) {
       ig_reel_qty:          n("ppf-reel-qty") || 0,
       ig_story_qty:         n("ppf-story-qty") || 0,
       tt_qty:               n("ppf-tt-qty") || 0,
-      ig_reel_cpm:          n("ppf-reel-cpm"),
-      ig_story_cpm:         n("ppf-story-cpm"),
-      ig_feed_cpm:          n("ppf-feed-cpm"),
-      tt_cpm:               n("ppf-tt-cpm"),
+      ig_reel_cpv:          n("ppf-reel-cpv"),
+      ig_story_cpv:         n("ppf-story-cpv"),
+      ig_feed_cpv:          n("ppf-feed-cpv"),
+      tt_cpv:               n("ppf-tt-cpv"),
       organic_pct:          n("ppf-org-pct"),
       paid_pct:             n("ppf-paid-pct"),
       first_offer:          n("ppf-first"),
@@ -1277,10 +1277,10 @@ async function openPaidPlanModal(row) {
     const updateCalc = () => {
       const nv = id => parseFloat($(id)?.value) || 0;
       const igImp   = nv("ppf-ig-imp");
-      const igFeed  = nv("ppf-feed-qty")  * igImp * nv("ppf-feed-cpm")  / 1000;
-      const igReel  = nv("ppf-reel-qty")  * igImp * nv("ppf-reel-cpm")  / 1000;
-      const igStory = nv("ppf-story-qty") * igImp * nv("ppf-story-cpm") / 1000;
-      const tt      = nv("ppf-tt-qty")    * nv("ppf-tt-imp") * nv("ppf-tt-cpm") / 1000;
+      const igFeed  = nv("ppf-feed-qty")  * igImp * nv("ppf-feed-cpv");
+      const igReel  = nv("ppf-reel-qty")  * igImp * nv("ppf-reel-cpv");
+      const igStory = nv("ppf-story-qty") * igImp * nv("ppf-story-cpv");
+      const tt      = nv("ppf-tt-qty")    * nv("ppf-tt-imp") * nv("ppf-tt-cpv");
       const base    = igFeed + igReel + igStory + tt;
       const org     = base * nv("ppf-org-pct") / 100;
       const paid    = base * nv("ppf-paid-pct") / 100;
@@ -1296,7 +1296,7 @@ async function openPaidPlanModal(row) {
     };
     ["ppf-ig-imp","ppf-tt-imp",
      "ppf-feed-qty","ppf-reel-qty","ppf-story-qty","ppf-tt-qty",
-     "ppf-reel-cpm","ppf-story-cpm","ppf-feed-cpm","ppf-tt-cpm",
+     "ppf-reel-cpv","ppf-story-cpv","ppf-feed-cpv","ppf-tt-cpv",
      "ppf-org-pct","ppf-paid-pct"].forEach(id => $(id)?.addEventListener("input", updateCalc));
     updateCalc(); // run immediately with existing values
   }, 0);

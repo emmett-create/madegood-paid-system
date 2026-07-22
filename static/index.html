@@ -171,12 +171,12 @@
         <!-- Auto-fill defaults strip -->
         <div class="calc-strip" style="margin-bottom:14px;flex-wrap:wrap;gap:8px">
           <span class="calc-label" style="white-space:nowrap">Auto-fill column</span>
-          <button class="view-btn pp-autofill-btn" data-field="ig_feed_cpm"  data-val="29.00" data-label="IG Feed CPM ($29)">IG Feed CPM ($29)</button>
-          <button class="view-btn pp-autofill-btn" data-field="ig_reel_cpm"  data-val="29.50" data-label="IG Reel CPM ($29.50)">IG Reel CPM ($29.50)</button>
-          <button class="view-btn pp-autofill-btn" data-field="ig_story_cpm" data-val="10.50" data-label="IG Story CPM ($10.50)">IG Story CPM ($10.50)</button>
-          <button class="view-btn pp-autofill-btn" data-field="tt_cpm"       data-val="20.00" data-label="TikTok CPM ($20)">TikTok CPM ($20)</button>
-          <button class="view-btn pp-autofill-btn" data-field="organic_pct"  data-val="10"    data-label="Organic % (10)">Organic % (10)</button>
-          <button class="view-btn pp-autofill-btn" data-field="paid_pct"     data-val="30"    data-label="Paid % (30)">Paid % (30)</button>
+          <button class="view-btn pp-autofill-btn" data-field="ig_feed_cpv"  data-val="0.14" data-label="IG Feed CPV ($0.14)">IG Feed CPV ($0.14)</button>
+          <button class="view-btn pp-autofill-btn" data-field="ig_reel_cpv"  data-val="0.14" data-label="IG Reel CPV ($0.14)">IG Reel CPV ($0.14)</button>
+          <button class="view-btn pp-autofill-btn" data-field="ig_story_cpv" data-val="0.14" data-label="IG Story CPV ($0.14)">IG Story CPV ($0.14)</button>
+          <button class="view-btn pp-autofill-btn" data-field="tt_cpv"       data-val="0.12" data-label="TikTok CPV ($0.12)">TikTok CPV ($0.12)</button>
+          <button class="view-btn pp-autofill-btn" data-field="organic_pct"  data-val="10"   data-label="Organic % (10)">Organic % (10)</button>
+          <button class="view-btn pp-autofill-btn" data-field="paid_pct"     data-val="30"   data-label="Paid % (30)">Paid % (30)</button>
         </div>
         <div class="table-wrap">
           <table class="tbl" id="pp-table">
@@ -185,11 +185,10 @@
                 <th colspan="2" style="border-bottom:none"></th>
                 <th colspan="5" style="text-align:center;background:rgba(88,166,255,.06);letter-spacing:.4px">CREATOR INFO</th>
                 <th colspan="4" style="text-align:center;background:rgba(192,132,252,.06);letter-spacing:.4px">DELIVERABLES</th>
-                <th colspan="4" style="text-align:center;background:rgba(210,153,34,.1);letter-spacing:.4px;color:var(--yellow)">CPM RATES</th>
-                <th colspan="6" style="text-align:center;background:rgba(88,166,255,.06);letter-spacing:.4px">CALCULATED COSTS</th>
-                <th colspan="4" style="text-align:center;background:rgba(192,132,252,.06);letter-spacing:.4px">USAGE RIGHTS</th>
-                <th colspan="1" style="text-align:center;background:rgba(63,185,80,.06);letter-spacing:.4px">TOTAL</th>
-                <th colspan="5" style="text-align:center;background:rgba(210,153,34,.06);letter-spacing:.4px">NEGOTIATIONS</th>
+                <th colspan="4" style="text-align:center;background:rgba(210,153,34,.1);letter-spacing:.4px;color:var(--yellow)">CPV RATES</th>
+                <th colspan="2" style="text-align:center;background:rgba(192,132,252,.06);letter-spacing:.4px">ADJUSTMENTS</th>
+                <th colspan="3" style="text-align:center;background:rgba(63,185,80,.06);letter-spacing:.4px">ESTIMATED COST</th>
+                <th colspan="4" style="text-align:center;background:rgba(210,153,34,.06);letter-spacing:.4px">NEGOTIATIONS</th>
                 <th style="border-bottom:none"></th>
               </tr>
               <tr>
@@ -204,30 +203,23 @@
                 <th style="background:rgba(192,132,252,.04)">IG Reel</th>
                 <th style="background:rgba(192,132,252,.04)">IG Story</th>
                 <th style="background:rgba(192,132,252,.04)">TikTok</th>
-                <th style="background:rgba(210,153,34,.06)">Feed CPM</th>
-                <th style="background:rgba(210,153,34,.06)">Reel CPM</th>
-                <th style="background:rgba(210,153,34,.06)">Story CPM</th>
-                <th style="background:rgba(210,153,34,.06)">TT CPM</th>
-                <th style="background:rgba(88,166,255,.04)">Feed Cost</th>
-                <th style="background:rgba(88,166,255,.04)">Reel Cost</th>
-                <th style="background:rgba(88,166,255,.04)">Story Cost</th>
-                <th style="background:rgba(88,166,255,.04)">TT Cost</th>
-                <th style="background:rgba(88,166,255,.04)">CPM Est.</th>
-                <th style="background:rgba(88,166,255,.04)">Total Impr.</th>
+                <th style="background:rgba(210,153,34,.06)">Feed CPV</th>
+                <th style="background:rgba(210,153,34,.06)">Reel CPV</th>
+                <th style="background:rgba(210,153,34,.06)">Story CPV</th>
+                <th style="background:rgba(210,153,34,.06)">TT CPV</th>
                 <th style="background:rgba(192,132,252,.04)">Organic %</th>
-                <th style="background:rgba(192,132,252,.04)">Organic $</th>
                 <th style="background:rgba(192,132,252,.04)">Paid %</th>
-                <th style="background:rgba(192,132,252,.04)">Paid $</th>
-                <th style="background:rgba(63,185,80,.04);font-weight:700">Total Est. Cost</th>
+                <th style="background:rgba(63,185,80,.04)">Low Est.</th>
+                <th style="background:rgba(63,185,80,.04);font-weight:700">Standard Est.</th>
+                <th style="background:rgba(63,185,80,.04)">High Est.</th>
                 <th style="background:rgba(210,153,34,.04)">First Offer</th>
-                <th style="background:rgba(210,153,34,.04)">Low End</th>
                 <th style="background:rgba(210,153,34,.04)">Inf. Offer</th>
                 <th style="background:rgba(210,153,34,.04)">A8 Counter</th>
                 <th style="background:rgba(210,153,34,.04)">Accepted Offer</th>
                 <th></th>
               </tr>
             </thead>
-            <tbody id="pp-body"><tr><td colspan="30" class="empty-cell">Loading…</td></tr></tbody>
+            <tbody id="pp-body"><tr><td colspan="25" class="empty-cell">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
