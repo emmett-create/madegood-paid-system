@@ -44,7 +44,8 @@ function loadCurrentTab() {
     "paid-plan":      loadPaidPlan,
     "content-cal":    loadCalendar,
     "content-review": loadContentReview,
-    "live-posts":     loadLivePosts,
+    "live-posts":       loadLivePosts,
+    "gifted-licensing": loadGiftedLicensing,
     "payments":       loadPayments,
     "budget":         loadBudget,
     "reporting":      loadReporting,
@@ -2230,6 +2231,109 @@ function openScreenshotUpload(postId, deliverableType) {
 }
 
 $("btn-add-lp").addEventListener("click", ()=>openLivePostModal(null));
+
+// ── Gifted Licensing ──────────────────────────────────────────────────────────
+async function loadGiftedLicensing() {
+  const data = await apiGet("/api/gifted_licensing");
+  const iS = "background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:11px";
+  $("gl-body").innerHTML = data.length ? data.map(r => `<tr>
+    <td>${fmtDate(r.live_date)}</td>
+    <td><strong>${esc(r.influencer?.name||"")}</strong></td>
+    <td>${esc(r.campaign||"—")}</td>
+    <td style="font-size:11px">${esc(r.deliverable_type||"—")}</td>
+    <td style="font-size:11px">${esc(r.contract||"—")}</td>
+    <td style="font-size:11px">${esc(r.usage||"—")}</td>
+    <td>${fmtDate(r.usage_term_start)}</td>
+    <td>${fmtDate(r.usage_term_end)}</td>
+    <td>${fmtD(r.final_rate)}</td>
+    <td>${r.live_link?`<a href="${esc(r.live_link)}" target="_blank" style="color:var(--red)">View ↗</a>`:"—"}</td>
+    <td style="font-size:11px">${esc(r.ig_spark_code||"—")}</td>
+    <td style="font-size:11px;color:var(--dim)">${esc(r.notes||"")}</td>
+    <td>
+      <button class="btn-icon btn-edit-gl" data-id="${r.id}">✏</button>
+      <button class="btn-icon btn-del-gl" data-id="${r.id}">✕</button>
+    </td>
+  </tr>`).join("") : `<tr><td colspan="13" class="empty-cell">No gifted licensing entries yet.</td></tr>`;
+
+  document.querySelectorAll(".btn-edit-gl").forEach(b =>
+    b.addEventListener("click", () => { const row = data.find(r => String(r.id) === b.dataset.id); if (row) openGLModal(row); })
+  );
+  document.querySelectorAll(".btn-del-gl").forEach(b =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Delete this entry?")) return;
+      await fetch(`/api/gifted_licensing/${b.dataset.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+      loadGiftedLicensing();
+    })
+  );
+}
+
+async function openGLModal(existing) {
+  await getInfluencers();
+  const e = existing || {};
+  const isEdit = !!existing;
+  const inPaidPlan = allInfluencers.filter(i => i.in_paid_plan || i.list_type === "EXT");
+  openModal(isEdit ? "Edit Gifted Licensing Entry" : "Add Gifted Licensing Entry", `
+    <div class="form-grid-2">
+      <div class="fld"><label>Creator</label>
+        <select id="glf-inf">
+          <option value="">— select —</option>
+          ${allInfluencers.map(i => `<option value="${i.id}" ${e.influencer_id===i.id?"selected":""}>${esc(i.name||i.ig_handle)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="fld"><label>Campaign</label>
+        <input id="glf-campaign" list="campaign-datalist" value="${esc(e.campaign||"")}" placeholder="Type or select…" autocomplete="off">
+      </div>
+    </div>
+    <div class="form-grid-2">
+      <div class="fld"><label>Live Date</label><input type="date" id="glf-live-date" value="${e.live_date||""}"></div>
+      <div class="fld"><label>Deliverable</label>
+        <select id="glf-del">
+          <option value="">—</option>
+          <option ${e.deliverable_type==="IG Feed"?"selected":""}>IG Feed</option>
+          <option ${e.deliverable_type==="IG Reel"?"selected":""}>IG Reel</option>
+          <option ${e.deliverable_type==="IG Story"?"selected":""}>IG Story</option>
+          <option ${e.deliverable_type==="TikTok"?"selected":""}>TikTok</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-grid-2">
+      <div class="fld"><label>Contract</label><input id="glf-contract" value="${esc(e.contract||"")}" placeholder="Contract reference…"></div>
+      <div class="fld"><label>Usage</label><input id="glf-usage" value="${esc(e.usage||"")}" placeholder="e.g. Organic (30 days)"></div>
+    </div>
+    <div class="form-grid-2">
+      <div class="fld"><label>Usage Term Start</label><input type="date" id="glf-start" value="${e.usage_term_start||""}"></div>
+      <div class="fld"><label>Usage Term End</label><input type="date" id="glf-end" value="${e.usage_term_end||""}"></div>
+    </div>
+    <div class="form-grid-2">
+      <div class="fld"><label>Final Rate ($)</label><input type="number" id="glf-rate" value="${e.final_rate||""}" placeholder="0"></div>
+      <div class="fld"><label>Live Link</label><input id="glf-link" value="${esc(e.live_link||"")}" placeholder="https://…"></div>
+    </div>
+    <div class="form-grid-2">
+      <div class="fld"><label>Spark Code</label><input id="glf-spark" value="${esc(e.ig_spark_code||"")}"></div>
+      <div class="fld"><label>Notes</label><input id="glf-notes" value="${esc(e.notes||"")}"></div>
+    </div>
+  `, async () => {
+    const payload = {
+      influencer_id:    parseInt($("glf-inf").value) || null,
+      campaign:         $("glf-campaign").value.trim() || null,
+      live_date:        $("glf-live-date").value || null,
+      deliverable_type: $("glf-del").value || null,
+      contract:         $("glf-contract").value.trim() || null,
+      usage:            $("glf-usage").value.trim() || null,
+      usage_term_start: $("glf-start").value || null,
+      usage_term_end:   $("glf-end").value || null,
+      final_rate:       parseFloat($("glf-rate").value) || null,
+      live_link:        $("glf-link").value.trim() || null,
+      ig_spark_code:    $("glf-spark").value.trim() || null,
+      notes:            $("glf-notes").value.trim() || null,
+    };
+    if (isEdit) await apiPatch(`/api/gifted_licensing/${existing.id}`, payload);
+    else await apiPost("/api/gifted_licensing", payload);
+    closeModal(); loadGiftedLicensing();
+  });
+}
+
+$("btn-add-gl")?.addEventListener("click", () => openGLModal(null));
 
 document.querySelectorAll("[data-lpview]").forEach(btn => {
   btn.addEventListener("click", () => {

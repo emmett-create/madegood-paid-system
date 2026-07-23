@@ -737,6 +737,35 @@ async def update_live_post(id: int, req: dict):
     check_auth(req.pop("password", None))
     return await sb_patch("live_posts", id, req)
 
+# ── Gifted Licensing ─────────────────────────────────────────────────────────
+@app.get("/api/gifted_licensing")
+async def get_gifted_licensing():
+    rows = await sb_get("gifted_licensing",
+        f"?client=eq.{config.CLIENT}&order=live_date.desc")
+    influencers = await sb_get("paid_influencers",
+        f"?client=eq.{config.CLIENT}&select=id,name,ig_handle")
+    inf_map = {i["id"]: i for i in influencers}
+    for r in rows:
+        r["influencer"] = inf_map.get(r["influencer_id"], {})
+    return rows
+
+@app.post("/api/gifted_licensing")
+async def add_gifted_licensing(req: dict):
+    check_auth(req.pop("password", None))
+    req["client"] = config.CLIENT
+    return await sb_post("gifted_licensing", req)
+
+@app.patch("/api/gifted_licensing/{id}")
+async def update_gifted_licensing(id: int, req: dict):
+    check_auth(req.pop("password", None))
+    return await sb_patch("gifted_licensing", id, req)
+
+@app.delete("/api/gifted_licensing/{id}")
+async def delete_gifted_licensing(id: int, password: str = ""):
+    check_auth(password)
+    await sb_delete("gifted_licensing", id)
+    return {"ok": True}
+
 # ── Payment Status ────────────────────────────────────────────────────────────
 @app.get("/api/payment_status")
 async def get_payment_status():

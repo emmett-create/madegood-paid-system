@@ -38,8 +38,9 @@
       <button class="tab-btn" data-tab="content-review">4. Content Review</button>
       <button class="tab-btn" data-tab="content-cal">5. Content Calendar</button>
       <button class="tab-btn" data-tab="live-posts">6. Live Posts</button>
-      <button class="tab-btn" data-tab="budget">7. Budget Tracker</button>
-      <button class="tab-btn" data-tab="payments">8. Payment Status</button>
+      <button class="tab-btn" data-tab="gifted-licensing">7. Gifted Licensing</button>
+      <button class="tab-btn" data-tab="budget">8. Budget Tracker</button>
+      <button class="tab-btn" data-tab="payments">9. Payment Status</button>
       <button class="tab-btn" data-tab="reporting">Reporting</button>
     </nav>
 
@@ -356,7 +357,39 @@
         </div>
       </div>
 
-      <!-- 7. Payment Status -->
+      <!-- 7. Gifted Licensing -->
+      <div id="tab-gifted-licensing" class="tab-panel">
+        <div class="panel-header">
+          <h2>Gifted Licensing</h2>
+          <div class="panel-actions">
+            <button class="btn-pri" id="btn-add-gl">+ Add Entry</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="tbl" id="gl-table">
+            <thead>
+              <tr>
+                <th>Live Date</th>
+                <th>Creator</th>
+                <th>Campaign</th>
+                <th>Deliverable</th>
+                <th>Contract</th>
+                <th>Usage</th>
+                <th>Usage Term Start</th>
+                <th>Usage Term End</th>
+                <th>Final Rate</th>
+                <th>Live Link</th>
+                <th>Spark Code</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="gl-body"><tr><td colspan="13" class="empty-cell">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 8. Payment Status -->
       <div id="tab-payments" class="tab-panel">
         <div class="panel-header">
           <h2>Payment Status</h2>
