@@ -1082,12 +1082,24 @@ async def get_reporting(start: str = "", end: str = ""):
     }
 
 # ── Serve frontend ────────────────────────────────────────────────────────────
+CLIENT_NAMES = {
+    "madegood":       "MadeGood",
+    "magna":          "Magna",
+    "evolvetogether": "EvolveTogether",
+}
+BUDGET_URLS = {
+    "madegood":       "https://emmett-create.github.io/madegood-budget-tracker/",
+    "evolvetogether": "https://emmett-create.github.io/evolvetogether-budget-tracker/",
+    "magna":          "",
+}
+
 @app.get("/api/app_config")
 def app_config():
+    client = current_client.get()
     return {
-        "client":            current_client.get(),
-        "client_name":       config.CLIENT_NAME,
-        "budget_tracker_url": config.BUDGET_TRACKER_URL,
+        "client":             client,
+        "client_name":        CLIENT_NAMES.get(client, client.title()),
+        "budget_tracker_url": BUDGET_URLS.get(client, ""),
     }
 
 @app.get("/hub")

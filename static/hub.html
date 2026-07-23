@@ -85,14 +85,22 @@ function buildUrl(client) {
   return `${client.url}?pw=${encodeURIComponent(client.pw)}`;
 }
 
+function showHub() {
+  document.getElementById("gate").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  document.getElementById("card-madegood").href       = buildUrl(CLIENTS.madegood);
+  document.getElementById("card-magna").href          = buildUrl(CLIENTS.magna);
+  document.getElementById("card-evolvetogether").href = buildUrl(CLIENTS.evolvetogether);
+}
+
+// Auto-show hub if already authenticated this session
+if (sessionStorage.getItem("hub_authed") === "1") showHub();
+
 document.getElementById("gate-btn").addEventListener("click", () => {
   const pw = document.getElementById("gate-pw").value.trim();
   if (pw === HUB_PASSWORD) {
-    document.getElementById("gate").classList.add("hidden");
-    document.getElementById("app").classList.remove("hidden");
-    document.getElementById("card-madegood").href       = buildUrl(CLIENTS.madegood);
-    document.getElementById("card-magna").href          = buildUrl(CLIENTS.magna);
-    document.getElementById("card-evolvetogether").href = buildUrl(CLIENTS.evolvetogether);
+    sessionStorage.setItem("hub_authed", "1");
+    showHub();
   } else {
     document.getElementById("gate-err").classList.remove("hidden");
   }
