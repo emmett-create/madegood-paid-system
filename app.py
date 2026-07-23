@@ -127,7 +127,7 @@ def auth(req: PwCheck):
 
 @app.post("/api/auth/client")
 def auth_client(req: PwCheck):
-    if current_client.get()_PASSWORD and req.password != current_client.get()_PASSWORD:
+    if config.APP_PASSWORD and req.password != config.APP_PASSWORD:
         raise HTTPException(status_code=401, detail="Wrong password.")
     return {"ok": True}
 
@@ -1087,7 +1087,7 @@ async def get_reporting(start: str = "", end: str = ""):
 def app_config():
     return {
         "client":            current_client.get(),
-        "client_name":       current_client.get()_NAME,
+        "client_name":       config.CLIENT_NAME,
         "budget_tracker_url": config.BUDGET_TRACKER_URL,
     }
 
