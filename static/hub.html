@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agency 8 — Paid System Hub</title>
+  <style>
+    :root { --red:#CA0100; --bg:#F8F5ED; --panel:#fff; --border:#DDD5CE; --text:#1A0000; --dim:#8a7070; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; min-height:100vh; display:flex; flex-direction:column; }
+    .header { background:#1A0000; border-bottom:2px solid var(--red); padding:12px 24px; display:flex; align-items:center; gap:14px; }
+    .header img { height:28px; }
+    .header-sub { color:#F8F5ED; opacity:.6; font-size:12px; }
+    .gate { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:100; }
+    .gate-box { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:40px; width:340px; display:flex; flex-direction:column; gap:14px; text-align:center; box-shadow:0 4px 24px rgba(26,0,0,.08); }
+    .gate-sub { color:var(--dim); font-size:13px; }
+    .gate-err { color:var(--red); font-size:12px; }
+    .hidden { display:none!important; }
+    input[type=password] { background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:9px 14px; font-size:13px; width:100%; }
+    .btn { background:var(--red); color:#fff; border:none; border-radius:8px; padding:10px 18px; font-size:13px; font-weight:600; cursor:pointer; width:100%; }
+    .btn:hover { filter:brightness(1.1); }
+    .main { flex:1; padding:48px 24px; max-width:900px; margin:0 auto; width:100%; }
+    h1 { font-size:22px; font-weight:700; margin-bottom:6px; }
+    .sub { color:var(--dim); font-size:13px; margin-bottom:36px; }
+    .clients { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:20px; }
+    .client-card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:28px 24px; cursor:pointer; text-decoration:none; color:var(--text); display:flex; flex-direction:column; gap:8px; transition:box-shadow .15s, transform .15s; }
+    .client-card:hover { box-shadow:0 4px 20px rgba(202,1,0,.12); transform:translateY(-2px); border-color:var(--red); }
+    .client-card .name { font-size:18px; font-weight:700; }
+    .client-card .desc { font-size:12px; color:var(--dim); }
+    .client-card .arrow { font-size:20px; color:var(--red); margin-top:8px; }
+    .dot { width:8px; height:8px; border-radius:50%; background:#1a7a1a; display:inline-block; margin-right:6px; }
+  </style>
+</head>
+<body>
+
+<div id="gate" class="gate">
+  <div class="gate-box">
+    <img src="/logo.png" alt="Agency 8" style="height:32px;align-self:center">
+    <div class="gate-sub">Agency 8 Paid System</div>
+    <input type="password" id="gate-pw" placeholder="Password" autocomplete="current-password">
+    <button class="btn" id="gate-btn">Enter</button>
+    <div class="gate-err hidden" id="gate-err">Wrong password</div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header class="header">
+    <img src="/logo.png" alt="Agency 8">
+    <span class="header-sub">Paid System Hub</span>
+  </header>
+
+  <div class="main">
+    <h1>Client Dashboards</h1>
+    <p class="sub">Select a client to open their paid system.</p>
+    <div class="clients">
+      <a class="client-card" id="card-madegood" href="#" target="_blank">
+        <div class="name">MadeGood</div>
+        <div class="desc">Paid influencer management</div>
+        <div class="arrow">→</div>
+      </a>
+      <a class="client-card" id="card-magna" href="#" target="_blank">
+        <div class="name">Magna</div>
+        <div class="desc">Paid influencer management</div>
+        <div class="arrow">→</div>
+      </a>
+      <a class="client-card" id="card-evolvetogether" href="#" target="_blank">
+        <div class="name">EvolveTogether</div>
+        <div class="desc">Paid influencer management</div>
+        <div class="arrow">→</div>
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+const HUB_PASSWORD = "a8paid";
+const SYSTEM_PASSWORD = "a8paid"; // passed via URL so users don't re-enter
+
+const CLIENTS = {
+  madegood:       "https://madegood-paid-system.onrender.com",
+  magna:          "https://magna-paid-system.onrender.com",
+  evolvetogether: "https://evolvetogether-paid-system.onrender.com",
+};
+
+function buildUrl(base) {
+  return `${base}?pw=${encodeURIComponent(SYSTEM_PASSWORD)}`;
+}
+
+document.getElementById("gate-btn").addEventListener("click", () => {
+  const pw = document.getElementById("gate-pw").value.trim();
+  if (pw === HUB_PASSWORD) {
+    document.getElementById("gate").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    document.getElementById("card-madegood").href       = buildUrl(CLIENTS.madegood);
+    document.getElementById("card-magna").href          = buildUrl(CLIENTS.magna);
+    document.getElementById("card-evolvetogether").href = buildUrl(CLIENTS.evolvetogether);
+  } else {
+    document.getElementById("gate-err").classList.remove("hidden");
+  }
+});
+document.getElementById("gate-pw").addEventListener("keydown", e => {
+  if (e.key === "Enter") document.getElementById("gate-btn").click();
+});
+</script>
+</body>
+</html>

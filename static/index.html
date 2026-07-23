@@ -12,7 +12,7 @@
   <div id="gate" class="gate">
     <div class="gate-box">
       <img src="/logo.png" alt="Agency 8" style="height:32px;align-self:center">
-      <div class="gate-sub">MadeGood Paid System</div>
+      <div class="gate-sub" id="gate-client-name">Paid System</div>
       <input type="password" id="gate-pw" placeholder="Team password" autocomplete="current-password">
       <button class="btn-pri" id="gate-btn">Enter</button>
       <div class="gate-err hidden" id="gate-err">Wrong password</div>
@@ -25,7 +25,7 @@
       <div class="header-inner">
         <div class="header-left" style="display:flex;align-items:center;gap:14px">
           <img src="/logo.png" alt="Agency 8" class="logo-img">
-          <span class="logo-sub">MadeGood Paid System</span>
+          <span class="logo-sub" id="header-client-name">Paid System</span>
         </div>
       </div>
     </header>
@@ -427,7 +427,7 @@
 
       <!-- Budget Tracker -->
       <div id="tab-budget" class="tab-panel" style="padding:0">
-        <iframe src="https://emmett-create.github.io/madegood-budget-tracker/" style="width:100%;height:calc(100vh - 90px);border:none;display:block"></iframe>
+        <iframe id="budget-iframe" src="" style="width:100%;height:calc(100vh - 90px);border:none;display:block"></iframe>
       </div>
 
       <!-- Reporting -->

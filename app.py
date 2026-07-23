@@ -1064,6 +1064,18 @@ async def get_reporting(start: str = "", end: str = ""):
     }
 
 # ── Serve frontend ────────────────────────────────────────────────────────────
+@app.get("/api/app_config")
+def app_config():
+    return {
+        "client":            config.CLIENT,
+        "client_name":       config.CLIENT_NAME,
+        "budget_tracker_url": config.BUDGET_TRACKER_URL,
+    }
+
+@app.get("/hub")
+def hub():
+    return FileResponse(os.path.join(STATIC, "hub.html"))
+
 @app.get("/")
 def index():
     return FileResponse(os.path.join(STATIC, "index.html"))

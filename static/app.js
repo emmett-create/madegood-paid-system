@@ -8,19 +8,51 @@ const fmtD = n => n != null && n !== "" ? "$" + Math.round(Number(n)).toLocaleSt
 const fmtDate = s => s ? new Date(s + "T12:00:00").toLocaleDateString("en-US", {month:"short",day:"numeric",year:"numeric"}) : "—";
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-$("gate-btn").addEventListener("click", async () => {
-  const pw = $("gate-pw").value.trim();
+async function doLogin(pw) {
   const r = await fetch("/api/auth", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({password:pw}) });
   if (r.ok) {
     PW = pw;
     $("gate").classList.add("hidden");
     $("app").classList.remove("hidden");
     loadCurrentTab();
-  } else {
-    $("gate-err").classList.remove("hidden");
+    return true;
   }
+  return false;
+}
+
+$("gate-btn").addEventListener("click", async () => {
+  const pw = $("gate-pw").value.trim();
+  if (!await doLogin(pw)) $("gate-err").classList.remove("hidden");
 });
 $("gate-pw").addEventListener("keydown", e => { if (e.key === "Enter") $("gate-btn").click(); });
+
+// Load client config (name, budget tracker URL) and apply to UI
+(async () => {
+  try {
+    const cfg = await fetch("/api/app_config").then(r => r.json());
+    const title = cfg.client_name ? cfg.client_name + " Paid System" : "Paid System";
+    const gateEl = document.getElementById("gate-client-name");
+    const headerEl = document.getElementById("header-client-name");
+    if (gateEl) gateEl.textContent = title;
+    if (headerEl) headerEl.textContent = title;
+    document.title = "Agency 8 — " + title;
+    if (cfg.budget_tracker_url) {
+      const iframe = document.getElementById("budget-iframe");
+      if (iframe) iframe.src = cfg.budget_tracker_url;
+    }
+  } catch { /* ignore */ }
+})();
+
+// Auto-auth from hub: if URL has ?pw=... pre-fill and submit
+(async () => {
+  const urlPw = new URLSearchParams(window.location.search).get("pw");
+  if (urlPw) {
+    $("gate-pw").value = urlPw;
+    await doLogin(urlPw);
+    // Clean URL so password isn't visible after login
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+})();
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 let currentTab = "master-list";
