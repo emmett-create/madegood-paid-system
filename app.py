@@ -19,7 +19,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 # ── Multi-tenant client context ───────────────────────────────────────────────
 VALID_CLIENTS = {"madegood", "magna", "evolvetogether"}
-current_client: ContextVar[str] = ContextVar("current_client", default=current_client.get())
+current_client: ContextVar[str] = ContextVar("current_client", default=config.CLIENT)
 
 class ClientContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
