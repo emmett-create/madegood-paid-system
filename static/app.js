@@ -29,7 +29,7 @@ $("gate-pw").addEventListener("keydown", e => { if (e.key === "Enter") $("gate-b
 // Load client config (name, budget tracker URL) and apply to UI
 (async () => {
   try {
-    const cfg = await fetch("/api/app_config").then(r => r.json());
+    const cfg = await fetch(_withCtx("/api/app_config")).then(r => r.json());
     const title = cfg.client_name ? cfg.client_name + " Paid System" : "Paid System";
     const gateEl = document.getElementById("gate-client-name");
     const headerEl = document.getElementById("header-client-name");
@@ -43,13 +43,19 @@ $("gate-pw").addEventListener("keydown", e => { if (e.key === "Enter") $("gate-b
   } catch { /* ignore */ }
 })();
 
-// Auto-auth from hub: if URL has ?pw=... pre-fill and submit
+// Auto-auth from hub: if URL has ?pw=... hide gate immediately then authenticate
 (async () => {
   const urlPw = new URLSearchParams(window.location.search).get("pw");
   if (urlPw) {
-    $("gate-pw").value = urlPw;
-    await doLogin(urlPw);
-    // Clean URL so password isn't visible after login
+    // Hide gate instantly to prevent flash
+    const gate = $("gate");
+    if (gate) gate.style.display = "none";
+    const ok = await doLogin(urlPw);
+    if (!ok) {
+      // Auth failed — show gate with error
+      if (gate) gate.style.display = "";
+      $("gate-err")?.classList.remove("hidden");
+    }
     window.history.replaceState({}, "", window.location.pathname);
   }
 })();
