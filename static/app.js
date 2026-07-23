@@ -85,18 +85,28 @@ function loadCurrentTab() {
   loaders[currentTab]?.();
 }
 
+// ── Client context (read from URL path) ──────────────────────────────────────
+const _VALID_CLIENTS = ["madegood", "magna", "evolvetogether"];
+const _pathClient = window.location.pathname.split("/").filter(Boolean)[0] || "";
+const CLIENT_CTX = _VALID_CLIENTS.includes(_pathClient) ? _pathClient : "madegood";
+
+function _withCtx(path) {
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}ctx=${CLIENT_CTX}`;
+}
+
 // ── API helpers ───────────────────────────────────────────────────────────────
 async function api(method, path, body) {
   const opts = { method, headers: {"Content-Type":"application/json"} };
   if (body) opts.body = JSON.stringify({...body, password: PW});
-  const r = await fetch(path, opts);
+  const r = await fetch(_withCtx(path), opts);
   if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.detail || `HTTP ${r.status}`); }
   return r.json();
 }
-const apiGet    = path => fetch(path, {headers:{"Content-Type":"application/json"}}).then(r=>r.json());
+const apiGet    = path => fetch(_withCtx(path), {headers:{"Content-Type":"application/json"}}).then(r=>r.json());
 const apiPost   = (path, body) => api("POST", path, body);
 const apiPatch  = (path, body) => api("PATCH", path, body);
-const apiDelete = path => fetch(path, {method:"DELETE"}).then(r=>r.json());
+const apiDelete = path => fetch(_withCtx(path), {method:"DELETE"}).then(r=>r.json());
 
 // ── Influencers cache ─────────────────────────────────────────────────────────
 let allInfluencers = [];  // loaded when needed for dropdowns

@@ -131,9 +131,14 @@ const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replac
 const fmt = n => n != null ? Number(n).toLocaleString() : "—";
 let allRows = [];
 
+// Read client from URL path (e.g. /magna/client → "magna")
+const _clParts = window.location.pathname.split("/").filter(Boolean);
+const CLIENT_CTX = ["madegood","magna","evolvetogether"].includes(_clParts[0]) ? _clParts[0] : "madegood";
+const _ctx = p => p + (p.includes("?") ? "&" : "?") + "ctx=" + CLIENT_CTX;
+
 document.getElementById("gate-btn").addEventListener("click", async () => {
   const pw = document.getElementById("gate-pw").value.trim();
-  const r  = await fetch("/api/auth/client", {
+  const r  = await fetch(_ctx("/api/auth/client"), {
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({password: pw})
   });
@@ -150,7 +155,7 @@ document.getElementById("gate-pw").addEventListener("keydown", e => { if (e.key=
 document.getElementById("cl-search").addEventListener("input", renderCreators);
 
 async function loadCreators() {
-  const data = await fetch("/api/client/influencers").then(r=>r.json());
+  const data = await fetch(_ctx("/api/client/influencers")).then(r=>r.json());
   allRows = data || [];
   renderCreators();
 }
@@ -195,7 +200,7 @@ function renderCreators() {
 
   document.querySelectorAll(".cl-approved").forEach(cb =>
     cb.addEventListener("change", async () => {
-      await fetch(`/api/client/influencers/${cb.dataset.id}`, {
+      await fetch(_ctx(`/api/client/influencers/${cb.dataset.id}`), {
         method:"PATCH", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({client_approved: cb.checked})
       });
@@ -205,7 +210,7 @@ function renderCreators() {
   );
   document.querySelectorAll(".cl-notes").forEach(inp =>
     inp.addEventListener("blur", async () => {
-      await fetch(`/api/client/influencers/${inp.dataset.id}`, {
+      await fetch(_ctx(`/api/client/influencers/${inp.dataset.id}`), {
         method:"PATCH", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({client_notes: inp.value.trim() || null})
       });
@@ -219,7 +224,7 @@ const MONTHS = ["January","February","March","April","May","June","July","August
 
 async function loadCalendar() {
   calLoaded = true;
-  calRows = await fetch("/api/client/calendar").then(r=>r.json());
+  calRows = await fetch(_ctx("/api/client/calendar")).then(r=>r.json());
   renderCalendar();
 }
 

@@ -33,7 +33,6 @@
         body: JSON.stringify({password: pw})
       });
       if (r.ok) {
-        sessionStorage.setItem("hub_auth", pw);
         window.location.href = "/hub";
       } else {
         document.getElementById("err").style.display = "block";

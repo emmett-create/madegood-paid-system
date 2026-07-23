@@ -4,16 +4,35 @@ MadeGood Paid System — FastAPI backend
 
 import os
 import httpx
-from fastapi import FastAPI, HTTPException, Depends
+from contextvars import ContextVar
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from typing import Optional, Any
 import config
 
-app = FastAPI(title="MadeGood Paid System")
+app = FastAPI(title="Agency 8 Paid System")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# ── Multi-tenant client context ───────────────────────────────────────────────
+VALID_CLIENTS = {"madegood", "magna", "evolvetogether"}
+current_client: ContextVar[str] = ContextVar("current_client", default=current_client.get())
+
+class ClientContextMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Read client from ?ctx= query param (set by frontend based on URL path)
+        ctx = request.query_params.get("ctx", "").strip()
+        if ctx not in VALID_CLIENTS:
+            ctx = current_client.get()
+        token = current_client.set(ctx)
+        response = await call_next(request)
+        current_client.reset(token)
+        return response
+
+app.add_middleware(ClientContextMiddleware)
 
 HERE   = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
@@ -108,7 +127,7 @@ def auth(req: PwCheck):
 
 @app.post("/api/auth/client")
 def auth_client(req: PwCheck):
-    if config.CLIENT_PASSWORD and req.password != config.CLIENT_PASSWORD:
+    if current_client.get()_PASSWORD and req.password != current_client.get()_PASSWORD:
         raise HTTPException(status_code=401, detail="Wrong password.")
     return {"ok": True}
 
@@ -116,7 +135,7 @@ def auth_client(req: PwCheck):
 async def get_campaigns():
     """Returns all distinct campaign values used across the master list."""
     rows = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&campaign=not.is.null&select=campaign")
+        f"?client=eq.{current_client.get()}&campaign=not.is.null&select=campaign")
     seen, result = set(), []
     for r in rows:
         c = (r.get("campaign") or "").strip()
@@ -129,7 +148,7 @@ async def delete_campaign(name: str, password: str = ""):
     """Remove a campaign option by clearing it from all creators that have it."""
     check_auth(password)
     rows = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&campaign=eq.{name}&select=id")
+        f"?client=eq.{current_client.get()}&campaign=eq.{name}&select=id")
     for r in rows:
         await sb_patch("paid_influencers", r["id"], {"campaign": None})
     return {"cleared": len(rows)}
@@ -138,7 +157,7 @@ async def delete_campaign(name: str, password: str = ""):
 async def get_client_influencers():
     """Public-ish endpoint for client view — returns EXT creators only."""
     return await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&list_type=eq.EXT&order=name.asc"
+        f"?client=eq.{current_client.get()}&list_type=eq.EXT&order=name.asc"
         f"&select=id,name,ig_handle,ig_url,tt_handle,tt_url,"
         f"ig_followers,tt_followers,tier,vertical,archetype,"
         f"location,location_country,gender,campaign,"
@@ -156,9 +175,9 @@ async def update_client_influencer(id: int, req: dict):
 async def get_client_calendar():
     """Returns content calendar entries for the client view (no auth required)."""
     rows = await sb_get("content_calendar",
-        f"?client=eq.{config.CLIENT}&order=scheduled_date.asc")
+        f"?client=eq.{current_client.get()}&order=scheduled_date.asc")
     influencers = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,name,ig_handle,tt_handle")
+        f"?client=eq.{current_client.get()}&select=id,name,ig_handle,tt_handle")
     inf_map = {i["id"]: i for i in influencers}
     for r in rows:
         r["influencer"] = inf_map.get(r["influencer_id"], {})
@@ -203,10 +222,10 @@ class InfluencerIn(BaseModel):
 @app.get("/api/influencers")
 async def get_influencers(list_type: str = "INT"):
     rows = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&list_type=eq.{list_type}&order=name.asc")
+        f"?client=eq.{current_client.get()}&list_type=eq.{list_type}&order=name.asc")
     # Backfill campaign from any same-handle record so INT/EXT always show the same value
     all_camp = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&campaign=not.is.null&select=ig_handle,campaign")
+        f"?client=eq.{current_client.get()}&campaign=not.is.null&select=ig_handle,campaign")
     handle_to_camp: dict = {}
     for r in all_camp:
         h = (r.get("ig_handle") or "").lower()
@@ -223,7 +242,7 @@ async def get_influencers(list_type: str = "INT"):
 async def add_influencer(req: InfluencerIn):
     check_auth(req.password)
     data = req.model_dump(exclude={"password"})
-    data["client"] = config.CLIENT
+    data["client"] = current_client.get()
     if data.get("ig_followers") and data.get("tt_followers"):
         data["total_followers"] = (data["ig_followers"] or 0) + (data["tt_followers"] or 0)
     return await sb_post("paid_influencers", data)
@@ -293,9 +312,9 @@ async def delete_influencer(id: int, password: str = ""):
 async def get_paid_plan():
     # Return ALL in_paid_plan creators, merging with any existing plan record
     influencers = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&in_paid_plan=eq.true&order=name.asc")
+        f"?client=eq.{current_client.get()}&in_paid_plan=eq.true&order=name.asc")
     plans = await sb_get("paid_plan",
-        f"?client=eq.{config.CLIENT}&order=created_at.asc")
+        f"?client=eq.{current_client.get()}&order=created_at.asc")
     # Map influencer_id -> first plan record (one plan per creator)
     plan_map = {}
     for p in plans:
@@ -304,7 +323,7 @@ async def get_paid_plan():
 
     # Build handle → plan lookup and handle → campaign (campaign may be on INT while in_paid_plan is on EXT)
     all_infs = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,ig_handle,campaign")
+        f"?client=eq.{current_client.get()}&select=id,ig_handle,campaign")
     handle_to_campaign: dict = {}
     for i in all_infs:
         h = (i.get("ig_handle") or "").lower()
@@ -371,7 +390,7 @@ async def get_paid_plan():
 @app.get("/api/paid_plan/all")
 async def get_paid_plan_all():
     """Returns all paid_plan records with ig_handle for cross-list matching in Outreach"""
-    plans = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}&order=created_at.asc")
+    plans = await sb_get("paid_plan", f"?client=eq.{current_client.get()}&order=created_at.asc")
     if plans:
         ids = ",".join(str(p["influencer_id"]) for p in plans)
         infs = await sb_get("paid_influencers", f"?id=in.({ids})&select=id,ig_handle")
@@ -383,7 +402,7 @@ async def get_paid_plan_all():
 @app.post("/api/paid_plan")
 async def add_paid_plan(req: dict):
     check_auth(req.pop("password", None))
-    req["client"] = config.CLIENT
+    req["client"] = current_client.get()
     return await sb_post("paid_plan", req)
 
 @app.patch("/api/paid_plan/{id}")
@@ -401,7 +420,7 @@ async def delete_paid_plan(id: int, password: str = ""):
 @app.get("/api/outreach")
 async def get_outreach():
     rows = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&order=name.asc"
+        f"?client=eq.{current_client.get()}&order=name.asc"
         f"&select=id,name,ig_handle,ig_url,tt_handle,tt_url,ig_followers,tt_followers,"
         f"list_type,tier,vertical,archetype,location,location_country,gender,email,"
         f"int_status,initial_rate,quoted_rate,outreach_usage,"
@@ -433,9 +452,9 @@ async def get_outreach():
 @app.get("/api/content_calendar")
 async def get_content_calendar():
     rows = await sb_get("content_calendar",
-        f"?client=eq.{config.CLIENT}&order=scheduled_date.asc")
+        f"?client=eq.{current_client.get()}&order=scheduled_date.asc")
     influencers = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,name,ig_handle,ig_url,tt_handle,tt_url")
+        f"?client=eq.{current_client.get()}&select=id,name,ig_handle,ig_url,tt_handle,tt_url")
     inf_map = {i["id"]: i for i in influencers}
     for r in rows:
         r["influencer"] = inf_map.get(r["influencer_id"], {})
@@ -444,7 +463,7 @@ async def get_content_calendar():
 @app.post("/api/content_calendar")
 async def add_content_calendar(req: dict):
     check_auth(req.pop("password", None))
-    req["client"] = config.CLIENT
+    req["client"] = current_client.get()
     return await sb_post("content_calendar", req)
 
 @app.patch("/api/content_calendar/{id}")
@@ -467,12 +486,12 @@ async def sync_calendar_from_cr(req: dict):
     check_auth(req.pop("password", None))
 
     cr_rows = await sb_get("content_review",
-        f"?client=eq.{config.CLIENT}&order=id.asc")
+        f"?client=eq.{current_client.get()}&order=id.asc")
 
     # Backfill is_collab from post_details (same as get_content_review)
-    plans    = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}")
+    plans    = await sb_get("paid_plan", f"?client=eq.{current_client.get()}")
     all_infs = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,ig_handle")
+        f"?client=eq.{current_client.get()}&select=id,ig_handle")
     id_to_handle = {i["id"]: (i.get("ig_handle") or "").lower() for i in all_infs}
     handle_to_plan = _best_plan(plans, id_to_handle)
     CR_TYPE_KEY = {"IG Feed":"ig_feed","IG Reel":"ig_reel","IG Story":"ig_story","TikTok":"tt"}
@@ -490,7 +509,7 @@ async def sync_calendar_from_cr(req: dict):
 
     # Delete all existing CR-linked calendar entries
     linked = await sb_get("content_calendar",
-        f"?client=eq.{config.CLIENT}&content_review_id=not.is.null")
+        f"?client=eq.{current_client.get()}&content_review_id=not.is.null")
     for cal in linked:
         await sb_delete("content_calendar", cal["id"])
 
@@ -504,7 +523,7 @@ async def sync_calendar_from_cr(req: dict):
             "tiktok":   1 if del_type=="TikTok"   else 0,
         })
         base = {
-            "client": config.CLIENT, "influencer_id": r["influencer_id"],
+            "client": current_client.get(), "influencer_id": r["influencer_id"],
             "deliverable": del_qty,  "content_review_id": r["id"],
         }
         note = f"cr:{r['id']}"
@@ -544,16 +563,16 @@ def _best_plan(plans: list, id_to_handle: dict) -> dict:
 @app.get("/api/content_review")
 async def get_content_review():
     rows = await sb_get("content_review",
-        f"?client=eq.{config.CLIENT}&order=id.asc")
+        f"?client=eq.{current_client.get()}&order=id.asc")
     influencers = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}"
+        f"?client=eq.{current_client.get()}"
         f"&select=id,name,ig_handle,ig_url,tt_handle,tt_url,"
         f"ig_followers,tt_followers,tier,vertical,archetype,campaign,location,gender")
     inf_map = {i["id"]: i for i in influencers}
 
     # Build handle → campaign backfill (same as get_influencers — campaign may be on INT not EXT)
     all_infs_camp = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,ig_handle,campaign")
+        f"?client=eq.{current_client.get()}&select=id,ig_handle,campaign")
     handle_to_campaign_cr: dict = {}
     for i in all_infs_camp:
         h = (i.get("ig_handle") or "").lower()
@@ -565,7 +584,7 @@ async def get_content_review():
             if h in handle_to_campaign_cr:
                 inf["campaign"] = handle_to_campaign_cr[h]
 
-    plans = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}")
+    plans = await sb_get("paid_plan", f"?client=eq.{current_client.get()}")
     all_infs = all_infs_camp
     id_to_handle = {i["id"]: (i.get("ig_handle") or "").lower() for i in all_infs}
     handle_to_plan = _best_plan(plans, id_to_handle)
@@ -598,7 +617,7 @@ async def get_content_review():
 @app.post("/api/content_review")
 async def add_content_review(req: dict):
     check_auth(req.pop("password", None))
-    req["client"] = config.CLIENT
+    req["client"] = current_client.get()
     return await sb_post("content_review", req)
 
 @app.patch("/api/content_review/{id}")
@@ -627,18 +646,18 @@ async def _sync_content_review():
     Uses the same plan-lookup logic as get_paid_plan so it's always consistent."""
     from collections import defaultdict
 
-    cr_rows = await sb_get("content_review", f"?client=eq.{config.CLIENT}&order=id.asc")
+    cr_rows = await sb_get("content_review", f"?client=eq.{current_client.get()}&order=id.asc")
 
     # id → handle map for all influencers
     all_infs = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,ig_handle")
+        f"?client=eq.{current_client.get()}&select=id,ig_handle")
     id_to_handle = {i["id"]: (i.get("ig_handle") or "").lower() for i in all_infs}
 
     # Same logic as get_paid_plan: iterate in_paid_plan influencers, find plan by ID then handle
     paid_infs = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&in_paid_plan=eq.true&order=name.asc")
+        f"?client=eq.{current_client.get()}&in_paid_plan=eq.true&order=name.asc")
     plans = await sb_get("paid_plan",
-        f"?client=eq.{config.CLIENT}&order=created_at.asc")
+        f"?client=eq.{current_client.get()}&order=created_at.asc")
 
     plan_map: dict = {}
     for p in plans:
@@ -690,7 +709,7 @@ async def _sync_content_review():
             if count < expected:
                 for _ in range(expected - count):
                     new_row = await sb_post("content_review", {
-                        "client":           config.CLIENT,
+                        "client":           current_client.get(),
                         "influencer_id":    inf["id"],
                         "deliverable_type": del_type,
                     })
@@ -711,9 +730,9 @@ async def _sync_content_review():
 @app.get("/api/live_posts")
 async def get_live_posts():
     rows = await sb_get("live_posts",
-        f"?client=eq.{config.CLIENT}&order=live_date.desc")
+        f"?client=eq.{current_client.get()}&order=live_date.desc")
     influencers = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,name,ig_handle,ig_followers,tt_followers")
+        f"?client=eq.{current_client.get()}&select=id,name,ig_handle,ig_followers,tt_followers")
     inf_map = {i["id"]: i for i in influencers}
     for r in rows:
         r["influencer"] = inf_map.get(r["influencer_id"], {})
@@ -729,7 +748,7 @@ async def get_live_posts():
 @app.post("/api/live_posts")
 async def add_live_post(req: dict):
     check_auth(req.pop("password", None))
-    req["client"] = config.CLIENT
+    req["client"] = current_client.get()
     return await sb_post("live_posts", req)
 
 @app.patch("/api/live_posts/{id}")
@@ -741,9 +760,9 @@ async def update_live_post(id: int, req: dict):
 @app.get("/api/gifted_licensing")
 async def get_gifted_licensing():
     rows = await sb_get("gifted_licensing",
-        f"?client=eq.{config.CLIENT}&order=live_date.desc")
+        f"?client=eq.{current_client.get()}&order=live_date.desc")
     influencers = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,name,ig_handle")
+        f"?client=eq.{current_client.get()}&select=id,name,ig_handle")
     inf_map = {i["id"]: i for i in influencers}
     for r in rows:
         r["influencer"] = inf_map.get(r["influencer_id"], {})
@@ -752,7 +771,7 @@ async def get_gifted_licensing():
 @app.post("/api/gifted_licensing")
 async def add_gifted_licensing(req: dict):
     check_auth(req.pop("password", None))
-    req["client"] = config.CLIENT
+    req["client"] = current_client.get()
     return await sb_post("gifted_licensing", req)
 
 @app.patch("/api/gifted_licensing/{id}")
@@ -770,9 +789,9 @@ async def delete_gifted_licensing(id: int, password: str = ""):
 @app.get("/api/payment_status")
 async def get_payment_status():
     rows = await sb_get("payment_status",
-        f"?client=eq.{config.CLIENT}&order=payment_due_date.asc")
+        f"?client=eq.{current_client.get()}&order=payment_due_date.asc")
     influencers = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}&select=id,name,ig_handle,email")
+        f"?client=eq.{current_client.get()}&select=id,name,ig_handle,email")
     inf_map = {i["id"]: i for i in influencers}
     for r in rows:
         r["influencer"] = inf_map.get(r["influencer_id"], {})
@@ -781,7 +800,7 @@ async def get_payment_status():
 @app.post("/api/payment_status")
 async def add_payment_status(req: dict):
     check_auth(req.pop("password", None))
-    req["client"] = config.CLIENT
+    req["client"] = current_client.get()
     return await sb_post("payment_status", req)
 
 @app.patch("/api/payment_status/{id}")
@@ -901,7 +920,7 @@ async def archive_sync(req: dict):
 
     # Get ALL master list creators (both INT and EXT) for handle lookup
     all_creators = await sb_get("paid_influencers",
-        f"?client=eq.{config.CLIENT}"
+        f"?client=eq.{current_client.get()}"
         f"&select=id,name,ig_handle,tt_handle,ig_followers,tt_followers,campaign,outreach_usage")
 
     # Build handle → creator map (covers both lists)
@@ -917,7 +936,7 @@ async def archive_sync(req: dict):
         return {"synced": 0, "created": 0, "message": "No creators in master list"}
 
     # Get paid_plan data for final rates
-    plans = await sb_get("paid_plan", f"?client=eq.{config.CLIENT}")
+    plans = await sb_get("paid_plan", f"?client=eq.{current_client.get()}")
     plan_map = {}
     for p in plans:
         if p["influencer_id"] not in plan_map:
@@ -965,7 +984,7 @@ async def archive_sync(req: dict):
                 break
 
     # Existing live posts indexed by URL for dedup
-    live_posts = await sb_get("live_posts", f"?client=eq.{config.CLIENT}")
+    live_posts = await sb_get("live_posts", f"?client=eq.{current_client.get()}")
     existing_urls = {(lp.get("live_link") or "").rstrip("/") for lp in live_posts if lp.get("live_link")}
     lp_by_url = {(lp.get("live_link") or "").rstrip("/"): lp for lp in live_posts if lp.get("live_link")}
 
@@ -1004,7 +1023,7 @@ async def archive_sync(req: dict):
             campaign      = creator.get("campaign") or plan.get("campaign")
 
             await sb_post("live_posts", {
-                "client":           config.CLIENT,
+                "client":           current_client.get(),
                 "influencer_id":    creator["id"],
                 "live_link":        url,
                 "campaign":         campaign,
@@ -1034,10 +1053,10 @@ async def archive_sync(req: dict):
 # ── Reporting (live aggregation) ──────────────────────────────────────────────
 @app.get("/api/reporting")
 async def get_reporting(start: str = "", end: str = ""):
-    influencers = await sb_get("paid_influencers", f"?client=eq.{config.CLIENT}")
-    paid_plan   = await sb_get("paid_plan",        f"?client=eq.{config.CLIENT}")
-    live_posts  = await sb_get("live_posts",       f"?client=eq.{config.CLIENT}")
-    payments    = await sb_get("payment_status",   f"?client=eq.{config.CLIENT}")
+    influencers = await sb_get("paid_influencers", f"?client=eq.{current_client.get()}")
+    paid_plan   = await sb_get("paid_plan",        f"?client=eq.{current_client.get()}")
+    live_posts  = await sb_get("live_posts",       f"?client=eq.{current_client.get()}")
+    payments    = await sb_get("payment_status",   f"?client=eq.{current_client.get()}")
 
     def in_range(d):
         if not d: return True
@@ -1067,8 +1086,8 @@ async def get_reporting(start: str = "", end: str = ""):
 @app.get("/api/app_config")
 def app_config():
     return {
-        "client":            config.CLIENT,
-        "client_name":       config.CLIENT_NAME,
+        "client":            current_client.get(),
+        "client_name":       current_client.get()_NAME,
         "budget_tracker_url": config.BUDGET_TRACKER_URL,
     }
 
@@ -1076,11 +1095,17 @@ def app_config():
 def hub():
     return FileResponse(os.path.join(STATIC, "hub.html"))
 
-@app.get("/madegood")
-@app.get("/magna")
-@app.get("/evolvetogether")
-def client_app():
+@app.get("/{client_slug}")
+def client_app(client_slug: str):
+    if client_slug not in VALID_CLIENTS:
+        raise HTTPException(status_code=404)
     return FileResponse(os.path.join(STATIC, "index.html"))
+
+@app.get("/{client_slug}/client")
+def client_view(client_slug: str):
+    if client_slug not in VALID_CLIENTS:
+        raise HTTPException(status_code=404)
+    return FileResponse(os.path.join(STATIC, "client.html"))
 
 @app.get("/")
 def index():
