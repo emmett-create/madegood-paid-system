@@ -831,15 +831,14 @@ async def delete_budget(id: int, password: str = ""):
     return {"ok": True}
 
 # ── Archive Sync ─────────────────────────────────────────────────────────────
-ARCHIVE_URL       = "https://app.archive.com/api/v2"
-ARCHIVE_TOKEN     = os.environ.get("ARCHIVE_APP_TOKEN", "WLeD7XUAgkWeuPUmwHHF5DHLrwZWiX3B")
-ARCHIVE_WORKSPACE = "0cec8ea5-c3b3-4bb1-8083-eaab65719f8e"
+ARCHIVE_URL   = "https://app.archive.com/api/v2"
+ARCHIVE_TOKEN = os.environ.get("ARCHIVE_APP_TOKEN", "WLeD7XUAgkWeuPUmwHHF5DHLrwZWiX3B")
 
 async def archive_query(query: str, variables: dict) -> dict:
     headers = {
         "Authorization": f"Bearer {ARCHIVE_TOKEN}",
         "Content-Type": "application/json",
-        "WORKSPACE-ID": ARCHIVE_WORKSPACE,
+        "WORKSPACE-ID": config.ARCHIVE_WORKSPACE,
     }
     async with httpx.AsyncClient(timeout=30) as c:
         r = await c.post(ARCHIVE_URL, json={"query": query, "variables": variables}, headers=headers)
@@ -863,7 +862,7 @@ def detect_deliverable_type(url: str, platform: str) -> str:
 @app.get("/api/archive_debug")
 async def archive_debug():
     """Diagnostic endpoint — tests Archive API connection and returns raw results."""
-    results = {"token": ARCHIVE_TOKEN[:8] + "...", "workspace": ARCHIVE_WORKSPACE}
+    results = {"token": ARCHIVE_TOKEN[:8] + "...", "workspace": config.ARCHIVE_WORKSPACE}
 
     # Test 1: campaigns query
     try:

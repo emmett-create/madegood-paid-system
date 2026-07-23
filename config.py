@@ -23,6 +23,13 @@ CLIENT_NAME = os.environ.get("CLIENT_NAME", {
     "evolvetogether": "EvolveTogether",
 }.get(CLIENT, CLIENT.title()))
 
+# Archive workspace UUID per client (all use the same token)
+ARCHIVE_WORKSPACE = os.environ.get("ARCHIVE_WORKSPACE", {
+    "madegood":       "0cec8ea5-c3b3-4bb1-8083-eaab65719f8e",
+    "magna":          "1a9f4270-c1c5-4dde-bcfa-3040589e9184",
+    "evolvetogether": "c8493a78-3eb0-4bad-9567-70dc2dc76e98",
+}.get(CLIENT, ""))
+
 # Budget tracker iframe URL (GitHub Pages) — leave empty if none
 BUDGET_TRACKER_URL = os.environ.get("BUDGET_TRACKER_URL", {
     "madegood":       "https://emmett-create.github.io/madegood-budget-tracker/",
