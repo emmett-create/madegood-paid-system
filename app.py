@@ -1076,8 +1076,14 @@ def app_config():
 def hub():
     return FileResponse(os.path.join(STATIC, "hub.html"))
 
+@app.get("/madegood")
+@app.get("/magna")
+@app.get("/evolvetogether")
+def client_app():
+    return FileResponse(os.path.join(STATIC, "index.html"))
+
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(STATIC, "index.html"))
+    return FileResponse(os.path.join(STATIC, "gateway.html"))
 
 app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")

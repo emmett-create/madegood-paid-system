@@ -73,17 +73,16 @@
 </div>
 
 <script>
-const HUB_PASSWORD = "a8paid";
-const SYSTEM_PASSWORD = "a8paid"; // passed via URL so users don't re-enter
+const HUB_PASSWORD = "a8paid123";
 
 const CLIENTS = {
-  madegood:       "https://madegood-paid-system.onrender.com",
-  magna:          "https://magna-paid-system.onrender.com",
-  evolvetogether: "https://evolvetogether-paid-system.onrender.com",
+  madegood:       { url: "https://madegood-paid-system.onrender.com/madegood",         pw: "a8paid123" },
+  magna:          { url: "https://magna-paid-system.onrender.com/magna",               pw: "a8paid123" },
+  evolvetogether: { url: "https://evolvetogether-paid-system.onrender.com/evolvetogether", pw: "a8paid123" },
 };
 
-function buildUrl(base) {
-  return `${base}?pw=${encodeURIComponent(SYSTEM_PASSWORD)}`;
+function buildUrl(client) {
+  return `${client.url}?pw=${encodeURIComponent(client.pw)}`;
 }
 
 document.getElementById("gate-btn").addEventListener("click", () => {
