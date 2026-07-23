@@ -2551,6 +2551,15 @@ async function openPayModal(existing) {
 
 // ── Budget Tracker ─────────────────────────────────────────────────────────────
 async function loadBudget() {
+  // Ensure iframe src is set from app config (may have loaded async after tab switch)
+  const iframe = document.getElementById("budget-iframe");
+  if (iframe && !iframe.src) {
+    try {
+      const cfg = await fetch(_withCtx("/api/app_config")).then(r => r.json());
+      if (cfg.budget_tracker_url) iframe.src = cfg.budget_tracker_url;
+    } catch { /* ignore */ }
+  }
+  if (!document.getElementById("budget-summary")) return; // iframe-only mode
   const { entries, campaigns, total_budget } = await apiGet("/api/budget");
   const actuals = entries.filter(e=>e.entry_type==="actual");
   const total = actuals.reduce((s,e)=>s+Number(e.amount),0);

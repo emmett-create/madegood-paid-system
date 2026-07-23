@@ -1094,8 +1094,8 @@ BUDGET_URLS = {
 }
 
 @app.get("/api/app_config")
-def app_config():
-    client = current_client.get()
+def app_config(ctx: str = ""):
+    client = ctx if ctx in VALID_CLIENTS else config.CLIENT
     return {
         "client":             client,
         "client_name":        CLIENT_NAMES.get(client, client.title()),
