@@ -234,12 +234,24 @@
             <button class="btn-pri" id="btn-add-cal">+ Add Entry</button>
           </div>
         </div>
-        <!-- Calendar color key -->
-        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:12px;font-size:11px">
-          <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#5b6ee8;display:inline-block"></span>Due Date</span>
-          <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#CA0100;display:inline-block"></span>Live — Not Approved</span>
-          <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#1a7a1a;display:inline-block"></span>Live — Approved</span>
-          <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#6b3fa0;display:inline-block"></span>Collab Post</span>
+        <!-- Calendar color key / toggles -->
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px;font-size:12px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none">
+            <input type="checkbox" id="cal-show-due" checked style="accent-color:#5b6ee8;width:14px;height:14px">
+            <span style="width:12px;height:12px;border-radius:3px;background:#5b6ee8;display:inline-block;flex-shrink:0"></span>Due Date
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none">
+            <input type="checkbox" id="cal-show-pending" checked style="accent-color:#CA0100;width:14px;height:14px">
+            <span style="width:12px;height:12px;border-radius:3px;background:#CA0100;display:inline-block;flex-shrink:0"></span>Live — Not Approved
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none">
+            <input type="checkbox" id="cal-show-approved" checked style="accent-color:#1a7a1a;width:14px;height:14px">
+            <span style="width:12px;height:12px;border-radius:3px;background:#1a7a1a;display:inline-block;flex-shrink:0"></span>Live — Approved
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none">
+            <input type="checkbox" id="cal-show-collab" checked style="accent-color:#6b3fa0;width:14px;height:14px">
+            <span style="width:12px;height:12px;border-radius:3px;background:#6b3fa0;display:inline-block;flex-shrink:0"></span>Collab Post
+          </label>
         </div>
         <div id="cal-view">
           <div class="cal-nav-row">
@@ -325,33 +337,21 @@
         <div class="panel-header">
           <h2>Live Posts</h2>
           <div class="panel-actions">
+            <div class="list-toggle">
+              <button class="list-btn active" id="lp-view-all" data-lpview="all">All</button>
+              <button class="list-btn" id="lp-view-tt" data-lpview="tiktok">TikTok</button>
+              <button class="list-btn" id="lp-view-reel" data-lpview="reel">IG Reels</button>
+            </div>
             <button class="btn-sec" id="btn-archive-sync" style="display:flex;align-items:center;gap:6px">↻ Sync from Archive</button>
             <button class="btn-pri" id="btn-add-lp">+ Add Post</button>
           </div>
         </div>
+        <!-- hidden file input for screenshot upload -->
+        <input type="file" id="lp-screenshot-input" accept="image/*" style="display:none">
         <div class="table-wrap">
           <table class="tbl" id="lp-table">
-            <thead>
-              <tr>
-                <th>Live Date</th>
-                <th>Creator</th>
-                <th>Campaign</th>
-                <th>Deliverable</th>
-                <th>Usage</th>
-                <th>Final Rate</th>
-                <th>Live Link</th>
-                <th>Views</th>
-                <th>Impression Rate</th>
-                <th>Engagement</th>
-                <th>Engagement Rate</th>
-                <th>CPV</th>
-                <th>CPE</th>
-                <th>Spark Code</th>
-                <th>Boosted</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="lp-body"><tr><td colspan="16" class="empty-cell">Loading…</td></tr></tbody>
+            <thead id="lp-thead"></thead>
+            <tbody id="lp-body"><tr><td colspan="17" class="empty-cell">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>

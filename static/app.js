@@ -1322,6 +1322,18 @@ document.querySelectorAll(".view-btn").forEach(btn => {
 
 $("cal-prev").addEventListener("click", () => { if (--calM < 0) { calM=11; calY--; } renderCalendar(); });
 $("cal-next").addEventListener("click", () => { if (++calM > 11) { calM=0; calY++; } renderCalendar(); });
+// Restore saved calendar toggle state
+["cal-show-due","cal-show-pending","cal-show-approved","cal-show-collab"].forEach(id => {
+  const saved = localStorage.getItem(id);
+  if (saved !== null) {
+    const el = document.getElementById(id);
+    if (el) el.checked = saved === "true";
+  }
+  document.getElementById(id)?.addEventListener("change", e => {
+    localStorage.setItem(id, e.target.checked);
+    renderCalendar();
+  });
+});
 
 function crDelLabel(type) {
   if (type === "IG Reel")  return "1x Reel";
@@ -1404,12 +1416,19 @@ function renderCalendar() {
             groups[key].entries.push(e);
           });
           return Object.values(groups).map(g => {
+            const showDue      = document.getElementById("cal-show-due")?.checked ?? true;
+            const showPending  = document.getElementById("cal-show-pending")?.checked ?? true;
+            const showApproved = document.getElementById("cal-show-approved")?.checked ?? true;
+            const showCollab   = document.getElementById("cal-show-collab")?.checked ?? true;
             const chips = g.entries.map(e => {
-              // Purple = collab + approved; Red = not approved (incl. unapproved collab); Green = approved non-collab
               const collabApproved = !e.isDue && e.collab && e.approved;
-              const cls  = e.isDue           ? "cal-entry cal-entry-due"
-                         : collabApproved    ? "cal-entry cal-entry-live-approved"
-                         : e.approved        ? "cal-entry cal-entry-live-approved"
+              // Filter based on toggle state
+              if (e.isDue && !showDue) return "";
+              if (!e.isDue && collabApproved && !showCollab) return "";
+              if (!e.isDue && !collabApproved && e.approved && !showApproved) return "";
+              if (!e.isDue && !e.approved && !showPending) return "";
+              const cls  = e.isDue        ? "cal-entry cal-entry-due"
+                         : e.approved     ? "cal-entry cal-entry-live-approved"
                          : "cal-entry cal-entry-live-pending";
               const style  = collabApproved ? ' style="background:#6b3fa0;color:#fff"' : '';
               const prefix = collabApproved ? "C· " : "";
@@ -1979,45 +1998,247 @@ window.updateBoostField = async (id, val) => {
   await apiPatch(`/api/live_posts/${id}`, {content_boosted: val});
 };
 
-async function loadLivePosts() {
-  const data = await apiGet("/api/live_posts");
-  $("lp-body").innerHTML = data.length ? data.map(r=>{
-    const followers = r.influencer?.ig_followers || r.influencer?.tt_followers || 0;
-    const views     = r.total_views || 0;
-    const eng       = r.total_engagement || 0;
-    const impRate   = (followers && views) ? ((views / followers) * 100).toFixed(1) + "%" : "—";
-    const engRate   = (views && eng)       ? ((eng / views) * 100).toFixed(1) + "%" : "—";
-    return `<tr>
-    <td>${fmtDate(r.live_date)}</td>
-    <td><strong>${esc(r.influencer?.name||"")}</strong></td>
-    <td>${esc(r.campaign||"")}</td>
-    <td style="font-size:11px">${esc(r.deliverable_type||"")}</td>
-    <td style="font-size:11px">${esc(r.usage||"")}</td>
-    <td>${fmtD(r.final_rate)}</td>
-    <td>${r.live_link?'<a href="'+esc(r.live_link)+'" target="_blank">View ↗</a>':"—"}</td>
-    <td>${fmt(r.total_views)}</td>
-    <td style="color:var(--dim)">${impRate}</td>
-    <td>${fmt(r.total_engagement)}</td>
-    <td style="color:var(--dim)">${engRate}</td>
-    <td>${r.cpv != null ? "$"+r.cpv : "—"}</td>
-    <td>${r.cpe != null ? "$"+r.cpe : "—"}</td>
-    <td>${esc(r.ig_spark_code||"")}</td>
-    <td><input type="checkbox" ${r.content_boosted?"checked":""} onchange="updateBoostField(${r.id},this.checked)" style="accent-color:var(--red);width:15px;height:15px;cursor:pointer"></td>
-    <td>
-      <button class="btn-icon btn-edit-lp" data-id="${r.id}">✏</button>
-      <button class="btn-icon btn-del-lp" data-id="${r.id}">✕</button>
-    </td>
-  </tr>`;}).join("") : `<tr><td colspan="16" class="empty-cell">No live posts yet.</td></tr>`;
+let lpView = "all"; // "all" | "tiktok" | "reel"
+let lpData = [];
+
+const LP_HEADS = {
+  all: `<tr>
+    <th></th><th>Live Date</th><th>Creator</th><th>Campaign</th><th>Deliverable</th>
+    <th>Usage</th><th>Final Rate</th><th>Live Link</th><th>Views</th>
+    <th>Impression Rate</th><th>Engagement</th><th>Engagement Rate</th>
+    <th>CPV</th><th>CPE</th><th>Spark Code</th><th>Boosted</th><th></th>
+  </tr>`,
+  tiktok: `<tr>
+    <th></th><th>Live Date</th><th>Creator</th><th>Campaign</th><th>Final Rate</th><th>Live Link</th>
+    <th>Video Views</th><th>Avg Watch Time</th><th>Watched Full (%)</th><th>Total Play Time</th>
+    <th>Likes</th><th>Comments</th><th>Shares</th><th>Saves</th>
+    <th>Engagements</th><th>Retention Rate (%)</th><th>Engagement Rate</th>
+    <th>Impression Rate</th><th>CPE</th><th>CPI</th><th>Spark Code</th><th>Boosted</th><th></th>
+  </tr>`,
+  reel: `<tr>
+    <th></th><th>Live Date</th><th>Creator</th><th>Campaign</th><th>Final Rate</th><th>Live Link</th>
+    <th>Likes</th><th>Comments</th><th>Shares</th><th>Saves</th><th>Reposts</th>
+    <th>Views</th><th>Reach</th><th>Total Watch Time</th><th>Interactions</th>
+    <th>Avg Watch Time</th><th>Accounts Reached</th>
+    <th>Engagement Rate</th><th>Impression Rate</th><th>CPE</th><th>CPI</th>
+    <th>Spark Code</th><th>Boosted</th><th></th>
+  </tr>`,
+};
+
+const LP_SCREENSHOT_FIELDS = {
+  tiktok: [
+    {key:"total_views",      label:"Video Views",         type:"number"},
+    {key:"avg_watch_time",   label:"Avg Watch Time",      type:"text"},
+    {key:"watched_full_pct", label:"Watched Full (%)",    type:"number"},
+    {key:"total_play_time",  label:"Total Play Time",     type:"text"},
+    {key:"likes",            label:"Likes",               type:"number"},
+    {key:"comments",         label:"Comments",            type:"number"},
+    {key:"shares",           label:"Shares",              type:"number"},
+    {key:"saves",            label:"Saves",               type:"number"},
+    {key:"retention_rate",   label:"Retention Rate (%)",  type:"number"},
+  ],
+  reel: [
+    {key:"likes",            label:"Likes",               type:"number"},
+    {key:"comments",         label:"Comments",            type:"number"},
+    {key:"shares",           label:"Shares",              type:"number"},
+    {key:"saves",            label:"Saves",               type:"number"},
+    {key:"reposts",          label:"Reposts",             type:"number"},
+    {key:"total_views",      label:"Views",               type:"number"},
+    {key:"reach",            label:"Reach",               type:"number"},
+    {key:"total_watch_time", label:"Total Watch Time",    type:"text"},
+    {key:"interactions",     label:"Interactions",        type:"number"},
+    {key:"avg_watch_time",   label:"Avg Watch Time",      type:"text"},
+    {key:"accounts_reached", label:"Accounts Reached",   type:"number"},
+  ],
+};
+
+function lpCalc(r) {
+  const views  = r.total_views || 0;
+  const likes  = r.likes || 0;
+  const comm   = r.comments || 0;
+  const shares = r.shares || 0;
+  const saves  = r.saves || 0;
+  const eng    = likes + comm + shares + saves;
+  const rate   = r.final_rate || 0;
+  const followers = r.influencer?.ig_followers || r.influencer?.tt_followers || 0;
+  const engRate  = (views && eng)       ? ((eng/views)*100).toFixed(1)+"%" : "—";
+  const impRate  = (followers && views) ? ((views/followers)*100).toFixed(1)+"%" : "—";
+  const cpe      = (eng && rate)  ? "$"+(rate/eng).toFixed(2) : "—";
+  const cpi      = (views && rate) ? "$"+(rate/views).toFixed(4) : "—";
+  return {eng, engRate, impRate, cpe, cpi};
+}
+
+function renderLivePosts() {
+  const thead = $("lp-thead");
+  if (thead) thead.innerHTML = LP_HEADS[lpView] || LP_HEADS.all;
+
+  let rows = lpData;
+  if (lpView === "tiktok") rows = lpData.filter(r => (r.deliverable_type||"").toLowerCase().includes("tiktok"));
+  if (lpView === "reel")   rows = lpData.filter(r => (r.deliverable_type||"").toLowerCase().includes("reel"));
+
+  const uploadBtn = (r) =>
+    `<button class="btn-icon lp-upload-btn" data-id="${r.id}" data-type="${esc(r.deliverable_type||"")}" title="Upload screenshot">📷</button>`;
+
+  const body = $("lp-body");
+  if (!rows.length) { body.innerHTML = `<tr><td colspan="24" class="empty-cell">No live posts yet.</td></tr>`; return; }
+
+  if (lpView === "all") {
+    body.innerHTML = rows.map(r => {
+      const followers = r.influencer?.ig_followers || r.influencer?.tt_followers || 0;
+      const views = r.total_views || 0;
+      const eng   = r.total_engagement || 0;
+      const impRate = (followers && views) ? ((views/followers)*100).toFixed(1)+"%" : "—";
+      const engRate = (views && eng)       ? ((eng/views)*100).toFixed(1)+"%" : "—";
+      return `<tr>
+        <td>${uploadBtn(r)}</td>
+        <td>${fmtDate(r.live_date)}</td>
+        <td><strong>${esc(r.influencer?.name||"")}</strong></td>
+        <td>${esc(r.campaign||"")}</td>
+        <td style="font-size:11px">${esc(r.deliverable_type||"")}</td>
+        <td style="font-size:11px">${esc(r.usage||"")}</td>
+        <td>${fmtD(r.final_rate)}</td>
+        <td>${r.live_link?`<a href="${esc(r.live_link)}" target="_blank" style="color:var(--red)">View ↗</a>`:"—"}</td>
+        <td>${fmt(views)}</td>
+        <td style="color:var(--dim)">${impRate}</td>
+        <td>${fmt(eng)}</td>
+        <td style="color:var(--dim)">${engRate}</td>
+        <td>${r.cpv!=null?"$"+r.cpv:"—"}</td>
+        <td>${r.cpe!=null?"$"+r.cpe:"—"}</td>
+        <td>${esc(r.ig_spark_code||"")}</td>
+        <td><input type="checkbox" ${r.content_boosted?"checked":""} onchange="updateBoostField(${r.id},this.checked)" style="accent-color:var(--red);width:15px;height:15px;cursor:pointer"></td>
+        <td><button class="btn-icon btn-edit-lp" data-id="${r.id}">✏</button> <button class="btn-icon btn-del-lp" data-id="${r.id}">✕</button></td>
+      </tr>`;
+    }).join("");
+
+  } else if (lpView === "tiktok") {
+    body.innerHTML = rows.map(r => {
+      const c = lpCalc(r);
+      return `<tr>
+        <td>${uploadBtn(r)}</td>
+        <td>${fmtDate(r.live_date)}</td>
+        <td><strong>${esc(r.influencer?.name||"")}</strong></td>
+        <td>${esc(r.campaign||"")}</td>
+        <td>${fmtD(r.final_rate)}</td>
+        <td>${r.live_link?`<a href="${esc(r.live_link)}" target="_blank" style="color:var(--red)">View ↗</a>`:"—"}</td>
+        <td>${fmt(r.total_views)}</td>
+        <td>${esc(r.avg_watch_time||"—")}</td>
+        <td>${r.watched_full_pct!=null?r.watched_full_pct+"%":"—"}</td>
+        <td>${esc(r.total_play_time||"—")}</td>
+        <td>${fmt(r.likes)}</td>
+        <td>${fmt(r.comments)}</td>
+        <td>${fmt(r.shares)}</td>
+        <td>${fmt(r.saves)}</td>
+        <td style="font-weight:600">${fmt(c.eng)}</td>
+        <td>${r.retention_rate!=null?r.retention_rate+"%":"—"}</td>
+        <td style="color:var(--dim)">${c.engRate}</td>
+        <td style="color:var(--dim)">${c.impRate}</td>
+        <td>${c.cpe}</td>
+        <td>${c.cpi}</td>
+        <td>${esc(r.ig_spark_code||"")}</td>
+        <td><input type="checkbox" ${r.content_boosted?"checked":""} onchange="updateBoostField(${r.id},this.checked)" style="accent-color:var(--red);width:15px;height:15px;cursor:pointer"></td>
+        <td><button class="btn-icon btn-edit-lp" data-id="${r.id}">✏</button> <button class="btn-icon btn-del-lp" data-id="${r.id}">✕</button></td>
+      </tr>`;
+    }).join("");
+
+  } else if (lpView === "reel") {
+    body.innerHTML = rows.map(r => {
+      const c = lpCalc(r);
+      return `<tr>
+        <td>${uploadBtn(r)}</td>
+        <td>${fmtDate(r.live_date)}</td>
+        <td><strong>${esc(r.influencer?.name||"")}</strong></td>
+        <td>${esc(r.campaign||"")}</td>
+        <td>${fmtD(r.final_rate)}</td>
+        <td>${r.live_link?`<a href="${esc(r.live_link)}" target="_blank" style="color:var(--red)">View ↗</a>`:"—"}</td>
+        <td>${fmt(r.likes)}</td>
+        <td>${fmt(r.comments)}</td>
+        <td>${fmt(r.shares)}</td>
+        <td>${fmt(r.saves)}</td>
+        <td>${fmt(r.reposts)}</td>
+        <td>${fmt(r.total_views)}</td>
+        <td>${fmt(r.reach)}</td>
+        <td>${esc(r.total_watch_time||"—")}</td>
+        <td>${fmt(r.interactions)}</td>
+        <td>${esc(r.avg_watch_time||"—")}</td>
+        <td>${fmt(r.accounts_reached)}</td>
+        <td style="color:var(--dim)">${c.engRate}</td>
+        <td style="color:var(--dim)">${c.impRate}</td>
+        <td>${c.cpe}</td>
+        <td>${c.cpi}</td>
+        <td>${esc(r.ig_spark_code||"")}</td>
+        <td><input type="checkbox" ${r.content_boosted?"checked":""} onchange="updateBoostField(${r.id},this.checked)" style="accent-color:var(--red);width:15px;height:15px;cursor:pointer"></td>
+        <td><button class="btn-icon btn-edit-lp" data-id="${r.id}">✏</button> <button class="btn-icon btn-del-lp" data-id="${r.id}">✕</button></td>
+      </tr>`;
+    }).join("");
+  }
 
   document.querySelectorAll(".btn-edit-lp").forEach(b=>
-    b.addEventListener("click",()=>{ const row=data.find(r=>String(r.id)===b.dataset.id); if(row) openLivePostModal(row); })
+    b.addEventListener("click",()=>{ const row=lpData.find(r=>String(r.id)===b.dataset.id); if(row) openLivePostModal(row); })
   );
   document.querySelectorAll(".btn-del-lp").forEach(b=>
     b.addEventListener("click",async()=>{ if(!confirm("Delete?")) return; await apiDelete(`/api/live_posts/${b.dataset.id}?password=${encodeURIComponent(PW)}`); loadLivePosts(); })
   );
+  document.querySelectorAll(".lp-upload-btn").forEach(b=>
+    b.addEventListener("click",()=>{ openScreenshotUpload(b.dataset.id, b.dataset.type); })
+  );
+}
+
+async function loadLivePosts() {
+  lpData = await apiGet("/api/live_posts");
+  renderLivePosts();
+}
+
+function openScreenshotUpload(postId, deliverableType) {
+  const typeKey = deliverableType.toLowerCase().includes("tiktok") ? "tiktok"
+                : deliverableType.toLowerCase().includes("reel")   ? "reel"
+                : null;
+  const fields = typeKey ? LP_SCREENSHOT_FIELDS[typeKey] : null;
+  if (!fields) { alert("Screenshot upload is available for TikTok and IG Reel posts."); return; }
+
+  const inp = $("lp-screenshot-input");
+  inp.value = "";
+  inp.onchange = () => {
+    const file = inp.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const row = lpData.find(r => String(r.id) === String(postId)) || {};
+      const fieldsHtml = fields.map(f => `
+        <div class="fld">
+          <label>${f.label}</label>
+          <input id="sc-${f.key}" type="${f.type}" value="${row[f.key]!=null?row[f.key]:""}" placeholder="Enter value…">
+        </div>`).join("");
+      openModal(`Upload Metrics — ${esc(deliverableType)}`, `
+        <img src="${e.target.result}" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;margin-bottom:14px;border:1px solid var(--border)">
+        <div class="form-grid-2">${fieldsHtml}</div>
+      `, async () => {
+        const patch = {};
+        fields.forEach(f => {
+          const val = $(`sc-${f.key}`)?.value.trim();
+          if (val !== "") patch[f.key] = f.type === "number" ? (parseFloat(val)||null) : val;
+        });
+        await apiPatch(`/api/live_posts/${postId}`, patch);
+        const idx = lpData.findIndex(r => String(r.id) === String(postId));
+        if (idx >= 0) lpData[idx] = {...lpData[idx], ...patch};
+        closeModal();
+        renderLivePosts();
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+  inp.click();
 }
 
 $("btn-add-lp").addEventListener("click", ()=>openLivePostModal(null));
+
+document.querySelectorAll("[data-lpview]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    lpView = btn.dataset.lpview;
+    document.querySelectorAll("[data-lpview]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    renderLivePosts();
+  });
+});
 
 $("btn-archive-sync")?.addEventListener("click", async () => {
   const btn = $("btn-archive-sync");
