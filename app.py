@@ -1095,16 +1095,16 @@ def app_config():
 def hub():
     return FileResponse(os.path.join(STATIC, "hub.html"))
 
-@app.get("/{client_slug}")
-def client_app(client_slug: str):
-    if client_slug not in VALID_CLIENTS:
-        raise HTTPException(status_code=404)
+@app.get("/madegood")
+@app.get("/magna")
+@app.get("/evolvetogether")
+def client_app():
     return FileResponse(os.path.join(STATIC, "index.html"))
 
-@app.get("/{client_slug}/client")
-def client_view(client_slug: str):
-    if client_slug not in VALID_CLIENTS:
-        raise HTTPException(status_code=404)
+@app.get("/madegood/client")
+@app.get("/magna/client")
+@app.get("/evolvetogether/client")
+def client_view():
     return FileResponse(os.path.join(STATIC, "client.html"))
 
 @app.get("/")

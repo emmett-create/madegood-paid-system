@@ -13,7 +13,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or ""
 CLIENT = os.environ.get("PAID_CLIENT", "madegood")
 
 # Passwords — all deployments share the same internal password for hub auto-auth
-APP_PASSWORD    = os.environ.get("APP_PASSWORD", "a8paid")
+APP_PASSWORD    = os.environ.get("APP_PASSWORD", "a8paid123")
 CLIENT_PASSWORD = os.environ.get("CLIENT_PASSWORD", "client")
 
 # Display name shown in the header
