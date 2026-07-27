@@ -1188,6 +1188,29 @@ document.querySelectorAll(".pp-autofill-btn").forEach(btn => {
 
 ["pp-search","pp-filter-status"].forEach(id => document.getElementById(id)?.addEventListener("input", loadPaidPlan));
 
+// Read-only summary of per-post usage/collab selections (set via Outreach's Usage & Collab modal)
+function renderUsageByDeliverable(plan) {
+  const pd = plan.post_details || {};
+  const active = DEL_KEYS.filter(d => (plan[d.planField] || 0) > 0);
+  if (!active.length) {
+    return `<div style="font-size:12px;color:var(--dim)">No deliverables set yet.</div>`;
+  }
+  return active.map(d => {
+    const qty = plan[d.planField] || 0;
+    const posts = Array.from({length: qty}, (_, i) => (pd[d.key] || [])[i] || {usage: [], is_collab: false});
+    const rows = posts.map((p, i) => {
+      const usageStr = (p.usage && p.usage.length)
+        ? esc(p.usage.join(", "))
+        : `<span style="color:var(--dim)">Not set</span>`;
+      const collabStr = p.is_collab
+        ? ` <span style="color:#6b3fa0;font-weight:600">· Collab</span>`
+        : "";
+      return `<div style="font-size:12px;padding:1px 0">Post ${i + 1}: ${usageStr}${collabStr}</div>`;
+    }).join("");
+    return `<div style="margin-bottom:6px"><div style="font-size:12px;font-weight:600;margin-bottom:2px">${d.label} (${qty})</div>${rows}</div>`;
+  }).join("");
+}
+
 async function openPaidPlanModal(row) {
   const e = row;
   const planId = e.id;
@@ -1223,6 +1246,10 @@ async function openPaidPlanModal(row) {
       <div class="fld"><label>TikTok Videos</label><input type="number" id="ppf-tt-qty" value="${d(e.tt_qty,0)}" min="0"></div>
     </div>
     <div class="form-section">Usage</div>
+    <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:8px">
+      <div style="font-size:11px;font-weight:600;color:var(--dim);margin-bottom:6px;text-transform:uppercase">By Deliverable (set in Outreach)</div>
+      ${renderUsageByDeliverable(e)}
+    </div>
     <div class="form-grid-2">
       <div class="fld"><label>Usage Rights</label>
         <select id="ppf-usage">
@@ -1643,7 +1670,6 @@ function ppDeliverableSummary(plan) {
   if (plan.tt_qty       > 0) parts.push(`${plan.tt_qty} TikTok${plan.tt_qty > 1 ? "s" : ""}`);
   return parts.join(" · ");
 }
-const CR_CAMPAIGNS = ["A8 Paid Influencers", "MadeGood Paid Influencers", "Shipping & PR Mailers"];
 const CR_STATUSES  = ["New! Needs Client Review", "Client Reviewed: Approved", "Client Reviewed: Needs Edits"];
 
 // Sync a content_review record's dates to the Content Calendar
@@ -1858,12 +1884,7 @@ async function loadContentReview() {
         </select>
       </td>
       <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-      <td>
-        <select class="cr-campaign" data-id="${r.id}" style="${iS};min-width:120px">
-          <option value="">—</option>
-          ${CR_CAMPAIGNS.map(c=>`<option ${r.campaign===c?"selected":""}>${esc(c)}</option>`).join("")}
-        </select>
-      </td>
+      <td></td>
       <td style="color:var(--dim);font-size:13px;padding-left:8px;white-space:nowrap">↳</td>
       <td style="white-space:nowrap;font-weight:600;font-size:12px">${esc(r.deliverable_type||"—")}</td>
       <td style="text-align:center">
@@ -1911,7 +1932,6 @@ async function loadContentReview() {
       el.addEventListener(evt, () => apiPatch(`/api/content_review/${el.dataset.id}`, {[field]: el.value || null}))
     );
   wire("cr-status",      "status",            "change");
-  wire("cr-campaign",    "campaign",          "change");
   // Due + live date wires — also sync to calendar
   document.querySelectorAll(".cr-due").forEach(el =>
     el.addEventListener("change", async () => {
@@ -2012,12 +2032,6 @@ async function openContentReviewModal(existing) {
           ${inPaidPlan.map(i=>`<option value="${i.id}" ${e.influencer_id===i.id?"selected":""}>${esc(i.name||i.ig_handle)}</option>`).join("")}
         </select>
       </div>
-      <div class="fld"><label>Campaign</label>
-        <select id="crf-campaign">
-          <option value="">—</option>
-          ${CR_CAMPAIGNS.map(c=>`<option ${e.campaign===c?"selected":""}>${esc(c)}</option>`).join("")}
-        </select>
-      </div>
       <div class="fld"><label>Deliverable</label>
         <select id="crf-del">
           <option value="">—</option>
@@ -2033,7 +2047,6 @@ async function openContentReviewModal(existing) {
   `, async () => {
     await apiPost("/api/content_review", {
       influencer_id:    parseInt($("crf-inf").value),
-      campaign:         $("crf-campaign").value,
       deliverable_type: $("crf-del").value,
       content_due_date: $("crf-due").value || null,
       live_date:        $("crf-live").value || null,
