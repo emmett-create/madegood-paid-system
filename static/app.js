@@ -26,6 +26,16 @@ $("gate-btn").addEventListener("click", async () => {
 });
 $("gate-pw").addEventListener("keydown", e => { if (e.key === "Enter") $("gate-btn").click(); });
 
+// ── Client context (read from URL path) ──────────────────────────────────────
+const _VALID_CLIENTS = ["madegood", "magna", "evolvetogether"];
+const _pathClient = window.location.pathname.split("/").filter(Boolean)[0] || "";
+const CLIENT_CTX = _VALID_CLIENTS.includes(_pathClient) ? _pathClient : "madegood";
+
+function _withCtx(path) {
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}ctx=${CLIENT_CTX}`;
+}
+
 // Load client config (name, budget tracker URL) and apply to UI
 (async () => {
   try {
@@ -89,16 +99,6 @@ function loadCurrentTab() {
     "reporting":      loadReporting,
   };
   loaders[currentTab]?.();
-}
-
-// ── Client context (read from URL path) ──────────────────────────────────────
-const _VALID_CLIENTS = ["madegood", "magna", "evolvetogether"];
-const _pathClient = window.location.pathname.split("/").filter(Boolean)[0] || "";
-const CLIENT_CTX = _VALID_CLIENTS.includes(_pathClient) ? _pathClient : "madegood";
-
-function _withCtx(path) {
-  const sep = path.includes("?") ? "&" : "?";
-  return `${path}${sep}ctx=${CLIENT_CTX}`;
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -2553,7 +2553,7 @@ async function openPayModal(existing) {
 async function loadBudget() {
   // Ensure iframe src is set from app config (may have loaded async after tab switch)
   const iframe = document.getElementById("budget-iframe");
-  if (iframe && !iframe.src) {
+  if (iframe && !iframe.getAttribute("src")) {
     try {
       const cfg = await fetch(_withCtx("/api/app_config")).then(r => r.json());
       if (cfg.budget_tracker_url) iframe.src = cfg.budget_tracker_url;
