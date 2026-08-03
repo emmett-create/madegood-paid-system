@@ -314,7 +314,7 @@ async function loadMasterList() {
     const inExt = currentListType === "INT" && r.ig_handle && extHandles.has(r.ig_handle.toLowerCase());
     const locDisplay = [r.location, r.location_country].filter(Boolean).join(", ");
     return `<tr>
-    <td>${esc(r.name || "")}</td>
+    <td><button class="btn-ml-snapshot" data-id="${r.id}" style="background:none;border:none;color:var(--text);font-weight:600;cursor:pointer;padding:0;text-align:left;text-decoration:underline;text-decoration-color:var(--border)" title="View full snapshot">${esc(r.name || "")}</button></td>
     <td>${r.ig_handle ? `<a href="${esc(r.ig_url||`https://instagram.com/${r.ig_handle}`)}" target="_blank">@${esc(r.ig_handle)}</a>` : "—"}</td>
     <td>${r.tt_handle ? `<a href="${esc(r.tt_url||`https://tiktok.com/@${r.tt_handle}`)}" target="_blank">@${esc(r.tt_handle)}</a>` : "—"}</td>
     <td>${fmt(r.ig_followers)}</td>
@@ -340,6 +340,14 @@ async function loadMasterList() {
       <button class="btn-icon btn-del-inf" data-id="${r.id}" title="Delete">✕</button>
     </td>
   </tr>`;}).join("") : `<tr><td colspan="16" class="empty-cell">No creators yet. Click + Add Creator.</td></tr>`;
+
+  // Name → creator snapshot
+  document.querySelectorAll(".btn-ml-snapshot").forEach(b =>
+    b.addEventListener("click", () => {
+      const row = rows.find(r => String(r.id) === b.dataset.id);
+      if (row) openCreatorSnapshot(row);
+    })
+  );
 
   // Edit/delete
   document.querySelectorAll(".btn-edit-inf").forEach(b =>
@@ -2871,6 +2879,95 @@ function openModal(title, bodyHtml, onSubmit) {
   ov.classList.remove("hidden");
   document.getElementById("modal-close").onclick = closeModal;
   modalSubmitFn = onSubmit;
+}
+
+// Read-only variant — single "Close" button, no Save (nothing to submit)
+function openViewModal(title, bodyHtml) {
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-body").innerHTML = bodyHtml + `
+    <div class="modal-footer">
+      <button class="btn-pri" onclick="closeModal()">Close</button>
+    </div>`;
+  var ov = document.getElementById("modal-overlay");
+  ov.style.display = "flex";
+  ov.classList.remove("hidden");
+  document.getElementById("modal-close").onclick = closeModal;
+  modalSubmitFn = null;
+}
+
+// ── Creator Snapshot (Master List → click a name) ──────────────────────────────
+// Pulls together this creator's status across Outreach, Paid Plan, Content
+// Review, and Live Posts into one read-only view.
+function openCreatorSnapshot(row) {
+  openViewModal(`Creator Snapshot — ${esc(row.name || row.ig_handle || "")}`, `
+    <div id="snap-body" style="padding:24px 0;text-align:center;color:var(--dim);font-size:12px">Loading…</div>
+  `);
+  loadCreatorSnapshot(row);
+}
+
+async function loadCreatorSnapshot(row) {
+  const handle = (row.ig_handle || "").toLowerCase();
+  const matches = (r) =>
+    r.influencer_id === row.id ||
+    (handle && (r.ig_handle || r.influencer?.ig_handle || "").toLowerCase() === handle);
+
+  let plans = [], crRows = [], lpRows = [];
+  try {
+    [plans, crRows, lpRows] = await Promise.all([
+      apiGet("/api/paid_plan/all"),
+      apiGet("/api/content_review"),
+      apiGet("/api/live_posts"),
+    ]);
+  } catch (err) {
+    const el = $("snap-body");
+    if (el) el.innerHTML = `<p style="color:var(--red);font-size:12px">Error loading snapshot: ${esc(err.message)}</p>`;
+    return;
+  }
+
+  const plan     = plans.find(matches) || null;
+  const crMatches = crRows.filter(matches);
+  const lpMatches = lpRows.filter(matches);
+
+  const section = (title, html) => `<div class="form-section">${title}</div>${html}`;
+  const emptyMsg = (label) => `<p style="color:var(--dim);font-size:12px">No ${label} yet.</p>`;
+  const cardS = "background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:8px";
+
+  const outreachHtml = `
+    <div style="${cardS};display:flex;gap:24px;flex-wrap:wrap">
+      <span><span style="color:var(--dim)">Status </span><strong>${esc(row.outreach_status || "—")}</strong></span>
+      <span><span style="color:var(--dim)">Outreach Date </span><strong>${fmtDate(row.outreach_date)}</strong></span>
+      <span><span style="color:var(--dim)">Last Contact </span><strong>${fmtDate(row.last_contact)}</strong></span>
+    </div>`;
+
+  const paidPlanHtml = plan ? `
+    <div style="${cardS}">
+      <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:6px">
+        <span><span style="color:var(--dim)">IG Feed </span><strong>${plan.ig_feed_qty||0}</strong></span>
+        <span><span style="color:var(--dim)">IG Reel </span><strong>${plan.ig_reel_qty||0}</strong></span>
+        <span><span style="color:var(--dim)">IG Story </span><strong>${plan.ig_story_qty||0}</strong></span>
+        <span><span style="color:var(--dim)">TikTok </span><strong>${plan.tt_qty||0}</strong></span>
+      </div>
+      <div><span style="color:var(--dim)">Estimated Cost </span><strong style="color:var(--red);font-size:14px">${fmtD(calcEstCost(plan))}</strong></div>
+    </div>` : emptyMsg("Paid Plan record");
+
+  const crHtml = crMatches.length ? crMatches.map(r => `
+    <div style="${cardS}">
+      <strong>${esc(r.deliverable_type || "—")}</strong>${r.is_collab ? ` <span style="color:#6b3fa0;font-weight:600">· Collab</span>` : ""}
+      <div style="color:var(--dim);margin-top:2px">Usage: ${esc(r.usage || "—")} · Due: ${fmtDate(r.content_due_date)} · Live: ${fmtDate(r.live_date)}</div>
+    </div>`).join("") : emptyMsg("Content Review entries");
+
+  const lpHtml = lpMatches.length ? lpMatches.map(r => `
+    <div style="${cardS}">
+      <strong>${esc(r.deliverable_type || "—")}</strong> · ${fmtDate(r.live_date)}
+      ${r.live_link ? ` · <a href="${esc(r.live_link)}" target="_blank" style="color:var(--red)">View ↗</a>` : ""}
+    </div>`).join("") : emptyMsg("live posts");
+
+  const el = $("snap-body");
+  if (el) el.outerHTML =
+    section("Outreach", outreachHtml) +
+    section("Paid Plan", paidPlanHtml) +
+    section("Content Review", crHtml) +
+    section("Live Posts", lpHtml);
 }
 
 // Clicking outside the modal box also closes it
