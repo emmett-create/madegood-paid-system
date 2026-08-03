@@ -64,7 +64,7 @@
 <div id="gate" class="gate">
   <div class="gate-box">
     <img src="/logo.png" alt="Agency 8" style="height:30px;align-self:center">
-    <div class="gate-sub">MadeGood Creator Review</div>
+    <div class="gate-sub" id="gate-client-name">Creator Review</div>
     <input type="password" id="gate-pw" placeholder="Password" autocomplete="current-password">
     <button class="btn" id="gate-btn">Enter</button>
     <div class="gate-err hidden" id="gate-err">Wrong password</div>
@@ -75,7 +75,7 @@
   <header class="header">
     <div class="header-inner">
       <img src="/logo.png" alt="Agency 8" class="logo-img">
-      <span class="header-sub">MadeGood Creator Review</span>
+      <span class="header-sub" id="header-client-name">Creator Review</span>
     </div>
   </header>
 
@@ -83,6 +83,7 @@
     <div class="tab-nav">
       <button class="tab-btn active" id="tab-creators">Creators</button>
       <button class="tab-btn" id="tab-calendar">Content Calendar</button>
+      <button class="tab-btn" id="tab-cr">Content Review</button>
     </div>
 
     <!-- Creators tab -->
@@ -108,10 +109,22 @@
     <!-- Calendar tab -->
     <div class="tab-panel" id="panel-calendar">
       <div class="cal-key">
-        <span><span class="cal-key-dot" style="background:#5b6ee8"></span>Due Date</span>
-        <span><span class="cal-key-dot" style="background:#CA0100"></span>Live — Not Approved</span>
-        <span><span class="cal-key-dot" style="background:#1a7a1a"></span>Live — Approved</span>
-        <span><span class="cal-key-dot" style="background:#6b3fa0"></span>Collab Post</span>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="cal-show-due" checked style="accent-color:#5b6ee8;width:14px;height:14px">
+          <span class="cal-key-dot" style="background:#5b6ee8"></span>Due Date
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="cal-show-pending" checked style="accent-color:#CA0100;width:14px;height:14px">
+          <span class="cal-key-dot" style="background:#CA0100"></span>Live — Not Approved
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="cal-show-approved" checked style="accent-color:#1a7a1a;width:14px;height:14px">
+          <span class="cal-key-dot" style="background:#1a7a1a"></span>Live — Approved
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="cal-show-collab" checked style="accent-color:#6b3fa0;width:14px;height:14px">
+          <span class="cal-key-dot" style="background:#6b3fa0"></span>Collab Post
+        </label>
       </div>
       <div class="cal-nav">
         <button class="cal-nav-btn" id="cal-prev">← Prev</button>
@@ -122,6 +135,29 @@
         <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
       </div>
       <div class="cal-grid" id="cal-grid"></div>
+      <div class="cal-detail hidden" id="cal-detail" style="margin-top:16px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px">
+        <div style="font-weight:700;margin-bottom:10px" id="cal-detail-date"></div>
+        <div id="cal-detail-body"></div>
+      </div>
+    </div>
+
+    <!-- Content Review tab -->
+    <div class="tab-panel" id="panel-cr">
+      <p class="sub">Leave feedback on any deliverable using the Client Feedback fields. Everything else is read-only.</p>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Creator</th><th>Deliverable</th><th>Collab</th><th>Usage</th>
+              <th>Due</th><th>Live Date</th><th>Concept</th>
+              <th>Content V1</th><th>Caption V1</th><th>Client Feedback V1</th>
+              <th>Content V2</th><th>Caption V2</th><th>Client Feedback V2</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="cr-body"><tr><td colspan="14" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
@@ -135,6 +171,19 @@ let allRows = [];
 const _clParts = window.location.pathname.split("/").filter(Boolean);
 const CLIENT_CTX = ["madegood","magna","evolvetogether"].includes(_clParts[0]) ? _clParts[0] : "madegood";
 const _ctx = p => p + (p.includes("?") ? "&" : "?") + "ctx=" + CLIENT_CTX;
+
+// Load client name for branding (page is shared across all 3 clients)
+(async () => {
+  try {
+    const cfg = await fetch(_ctx("/api/app_config")).then(r => r.json());
+    const title = cfg.client_name ? cfg.client_name + " Creator Review" : "Creator Review";
+    const gateEl = document.getElementById("gate-client-name");
+    const headerEl = document.getElementById("header-client-name");
+    if (gateEl) gateEl.textContent = title;
+    if (headerEl) headerEl.textContent = title;
+    document.title = "Agency 8 — " + title;
+  } catch { /* ignore */ }
+})();
 
 document.getElementById("gate-btn").addEventListener("click", async () => {
   const pw = document.getElementById("gate-pw").value.trim();
@@ -161,18 +210,19 @@ async function loadCreators() {
 }
 
 // Tab switching
-document.getElementById("tab-creators").addEventListener("click", () => {
-  document.getElementById("tab-creators").classList.add("active");
-  document.getElementById("tab-calendar").classList.remove("active");
-  document.getElementById("panel-creators").classList.add("active");
-  document.getElementById("panel-calendar").classList.remove("active");
-});
-document.getElementById("tab-calendar").addEventListener("click", () => {
-  document.getElementById("tab-calendar").classList.add("active");
-  document.getElementById("tab-creators").classList.remove("active");
-  document.getElementById("panel-calendar").classList.add("active");
-  document.getElementById("panel-creators").classList.remove("active");
-  if (!calLoaded) loadCalendar();
+const TABS = [
+  { btn: "tab-creators", panel: "panel-creators" },
+  { btn: "tab-calendar", panel: "panel-calendar", onShow: () => { if (!calLoaded) loadCalendar(); } },
+  { btn: "tab-cr",       panel: "panel-cr",       onShow: () => { if (!crLoaded) loadContentReview(); } },
+];
+TABS.forEach(t => {
+  document.getElementById(t.btn).addEventListener("click", () => {
+    TABS.forEach(o => {
+      document.getElementById(o.btn).classList.toggle("active", o === t);
+      document.getElementById(o.panel).classList.toggle("active", o === t);
+    });
+    t.onShow?.();
+  });
 });
 
 function renderCreators() {
@@ -219,12 +269,17 @@ function renderCreators() {
 }
 
 // ── Calendar ──────────────────────────────────────────────────────────────────
-let calRows = [], calYear = new Date().getFullYear(), calMonth = new Date().getMonth(), calLoaded = false;
+// Mirrors the internal Content Calendar tab exactly: manual entries (excluding
+// any linked to Content Review) + Content Review rows themselves (due dates +
+// live dates), same due/live-pending/live-approved/collab distinction & colors.
+let calRows = [], crCalRows = [], calYear = new Date().getFullYear(), calMonth = new Date().getMonth(), calLoaded = false;
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 async function loadCalendar() {
   calLoaded = true;
-  calRows = await fetch(_ctx("/api/client/calendar")).then(r=>r.json());
+  const data = await fetch(_ctx("/api/client/calendar")).then(r=>r.json());
+  calRows   = data.manual || [];
+  crCalRows = data.content_review || [];
   renderCalendar();
 }
 
@@ -240,25 +295,62 @@ function fmtDel(d) {
   } catch { return d || '—'; }
 }
 
+function crDelLabel(type) {
+  if (type === "IG Reel")  return "1x Reel";
+  if (type === "IG Story") return "1x Story";
+  if (type === "IG Feed")  return "1x Feed";
+  if (type === "TikTok")   return "1x TT";
+  return type || "—";
+}
+
 function renderCalendar() {
   document.getElementById("cal-month-label").textContent = `${MONTHS[calMonth]} ${calYear}`;
   const first = new Date(calYear, calMonth, 1).getDay();
   const days  = new Date(calYear, calMonth + 1, 0).getDate();
   const today = new Date().toISOString().slice(0,10);
+  const ym = `${calYear}-${String(calMonth+1).padStart(2,'0')}`;
 
   const byDate = {};
-  calRows.forEach(e => {
-    const d = e.scheduled_date;
-    if (d && d.slice(0,7) === `${calYear}-${String(calMonth+1).padStart(2,'0')}`) {
-      if (!byDate[d]) byDate[d] = [];
-      byDate[d].push(e);
+  const push = (ds, evt) => { (byDate[ds] = byDate[ds] || []).push(evt); };
+
+  // Manual calendar entries (no CR link)
+  calRows.forEach(r => {
+    if (r.scheduled_date && r.scheduled_date.slice(0,7) === ym) {
+      push(r.scheduled_date, {
+        influencer_id: r.influencer_id, influencer: r.influencer || {},
+        label: fmtDel(r.deliverable),
+        isDue: (r.notes||'').includes('type:due'),
+        collab: r.collab || false, approved: r.approved || false,
+        usage: r.usage,
+      });
     }
   });
+
+  // Content Review rows → due-date event + live-date event
+  crCalRows.forEach(r => {
+    const inf = r.influencer || {};
+    const lbl = crDelLabel(r.deliverable_type);
+    const isCollab   = r.is_collab || false;
+    const isApproved = r.approved_by_client || false;
+    if (r.content_due_date && r.content_due_date.slice(0,7) === ym) {
+      push(r.content_due_date, {influencer_id: r.influencer_id, influencer: inf,
+        label: lbl, isDue: true, collab: false, approved: false, usage: r.usage});
+    }
+    if (r.live_date && r.live_date.slice(0,7) === ym) {
+      push(r.live_date, {influencer_id: r.influencer_id, influencer: inf,
+        label: lbl, isDue: false, collab: isCollab, approved: isApproved, usage: r.usage});
+    }
+  });
+
+  const showDue      = document.getElementById("cal-show-due").checked;
+  const showPending  = document.getElementById("cal-show-pending").checked;
+  const showApproved = document.getElementById("cal-show-approved").checked;
+  const showCollab   = document.getElementById("cal-show-collab").checked;
 
   let html = '';
   for (let i = 0; i < first; i++) html += '<div class="cal-day faded"></div>';
   for (let d = 1; d <= days; d++) {
-    const ds = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const ds = `${ym}-${String(d).padStart(2,'0')}`;
     const es = byDate[ds] || [];
     const isToday = ds === today;
 
@@ -272,21 +364,62 @@ function renderCalendar() {
 
     const chips = Object.values(groups).map(g => {
       const c = g.entries.map(e => {
-        const isDue = (e.notes||'').includes('type:due');
-        const cls = e.collab && !isDue ? 'chip-collab'
-                  : isDue             ? 'chip-due'
-                  : e.approved        ? 'chip-approved'
-                  :                     'chip-live';
-        const prefix = e.collab && !isDue ? 'C· ' : '';
-        return `<span class="cal-chip ${cls}">${prefix}${esc(fmtDel(e.deliverable))}</span>`;
+        const collabApproved = !e.isDue && e.collab && e.approved;
+        if (e.isDue && !showDue) return '';
+        if (!e.isDue && collabApproved && !showCollab) return '';
+        if (!e.isDue && !collabApproved && e.approved && !showApproved) return '';
+        if (!e.isDue && !e.approved && !showPending) return '';
+        const cls = collabApproved ? 'chip-collab'
+                  : e.isDue        ? 'chip-due'
+                  : e.approved     ? 'chip-approved'
+                  :                  'chip-live';
+        const prefix = collabApproved ? 'C· ' : '';
+        return `<span class="cal-chip ${cls}">${prefix}${esc(e.label)}</span>`;
       }).join('');
-      return `<div style="margin-bottom:3px">${c}<div style="font-size:8px;color:#8a7070;margin-top:1px">${esc(g.name)}</div></div>`;
+      if (!c) return '';
+      return `<div style="margin-bottom:3px" data-date="${ds}">${c}<div style="font-size:8px;color:#8a7070;margin-top:1px">${esc(g.name)}</div></div>`;
     }).join('');
 
-    html += `<div class="cal-day${isToday?' is-today':''}" style="${isToday?'border-color:#CA0100':''}">
+    html += `<div class="cal-day${isToday?' is-today':''}" data-date="${ds}" style="cursor:pointer;${isToday?'border-color:#CA0100':''}">
       <div class="cal-day-num">${d}</div>${chips}</div>`;
   }
   document.getElementById("cal-grid").innerHTML = html;
+
+  document.querySelectorAll(".cal-day[data-date]").forEach(cell => {
+    cell.addEventListener("click", () => {
+      const ds = cell.dataset.date;
+      const entries = byDate[ds] || [];
+      const [y, m, d] = ds.split("-");
+      document.getElementById("cal-detail-date").textContent = `${MONTHS[parseInt(m)-1]} ${parseInt(d)}, ${y}`;
+      const body = document.getElementById("cal-detail-body");
+      if (!entries.length) {
+        body.innerHTML = `<span style="color:#8a7070;font-size:12px">No entries for this day.</span>`;
+      } else {
+        body.innerHTML = entries.map(e => {
+          const inf = e.influencer || {};
+          const typeLabel = e.isDue
+            ? `<span style="color:#5b6ee8;font-weight:600;font-size:11px">📋 Draft Due</span>`
+            : e.approved
+              ? `<span style="color:#1a7a1a;font-weight:600;font-size:11px">✓ Going Live</span>`
+              : `<span style="color:#CA0100;font-weight:600;font-size:11px">• Pending Approval</span>`;
+          const igLink = inf.ig_handle ? `<a href="https://instagram.com/${esc(inf.ig_handle)}" target="_blank">@${esc(inf.ig_handle)}</a>` : "";
+          const ttLink = inf.tt_handle ? `<a href="https://tiktok.com/@${esc(inf.tt_handle)}" target="_blank">@${esc(inf.tt_handle)}</a>` : "";
+          return `<div style="border-top:1px solid #DDD5CE;padding:10px 0;font-size:12px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+              <strong>${esc(inf.name||"Unknown")}</strong>${typeLabel}
+            </div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;color:#8a7070">
+              ${igLink ? `<span>IG: ${igLink}</span>` : ""}
+              ${ttLink ? `<span>TT: ${ttLink}</span>` : ""}
+              <span><strong style="color:#1A0000">${esc(e.label)}</strong></span>
+              ${e.usage ? `<span>Usage: <strong style="color:#1A0000">${esc(e.usage)}</strong></span>` : ""}
+            </div>
+          </div>`;
+        }).join("");
+      }
+      document.getElementById("cal-detail").classList.remove("hidden");
+    });
+  });
 }
 
 document.getElementById("cal-prev").addEventListener("click", () => {
@@ -297,6 +430,55 @@ document.getElementById("cal-next").addEventListener("click", () => {
   if (++calMonth > 11) { calMonth = 0; calYear++; }
   renderCalendar();
 });
+["cal-show-due","cal-show-pending","cal-show-approved","cal-show-collab"].forEach(id =>
+  document.getElementById(id).addEventListener("change", renderCalendar)
+);
+
+// ── Content Review ──────────────────────────────────────────────────────────────
+let crRows = [], crLoaded = false;
+
+async function loadContentReview() {
+  crLoaded = true;
+  crRows = await fetch(_ctx("/api/client/content_review")).then(r=>r.json());
+  renderContentReview();
+}
+
+function renderContentReview() {
+  const iS = "background:#F2EDE9;border:1px solid #DDD5CE;color:#1A0000;border-radius:5px;padding:5px 8px;font-size:12px;width:100%;min-height:32px;resize:vertical";
+  document.getElementById("cr-body").innerHTML = crRows.length ? crRows.map(r => {
+    const inf = r.influencer || {};
+    return `<tr>
+      <td><strong>${esc(inf.name||"")}</strong></td>
+      <td style="font-size:11px">${esc(r.deliverable_type||"—")}</td>
+      <td style="text-align:center">${r.is_collab ? "✓" : ""}</td>
+      <td style="font-size:11px">${esc(r.usage||"—")}</td>
+      <td style="font-size:11px;white-space:nowrap">${fmtDate(r.content_due_date)}</td>
+      <td style="font-size:11px;white-space:nowrap">${fmtDate(r.live_date)}</td>
+      <td style="font-size:11px;max-width:160px">${esc(r.concept||"—")}</td>
+      <td style="font-size:11px">${r.content_v1 ? `<a href="${esc(r.content_v1)}" target="_blank">View ↗</a>` : "—"}</td>
+      <td style="font-size:11px;max-width:140px">${esc(r.caption_v1||"—")}</td>
+      <td><textarea class="cr-fb" data-id="${r.id}" data-field="client_feedback_v1" rows="2" style="${iS}" placeholder="Add feedback…">${esc(r.client_feedback_v1||"")}</textarea></td>
+      <td style="font-size:11px">${r.content_v2 ? `<a href="${esc(r.content_v2)}" target="_blank">View ↗</a>` : "—"}</td>
+      <td style="font-size:11px;max-width:140px">${esc(r.caption_v2||"—")}</td>
+      <td><textarea class="cr-fb" data-id="${r.id}" data-field="client_feedback_v2" rows="2" style="${iS}" placeholder="Add feedback…">${esc(r.client_feedback_v2||"")}</textarea></td>
+      <td style="font-size:11px">${esc(r.status||"—")}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="14" class="empty">No content yet.</td></tr>`;
+
+  document.querySelectorAll(".cr-fb").forEach(el =>
+    el.addEventListener("blur", async () => {
+      await fetch(_ctx(`/api/client/content_review/${el.dataset.id}`), {
+        method: "PATCH", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({[el.dataset.field]: el.value.trim() || null}),
+      });
+    })
+  );
+}
+
+function fmtDate(s) {
+  if (!s) return "—";
+  return new Date(s + "T12:00:00").toLocaleDateString("en-US", {month:"short", day:"numeric"});
+}
 </script>
 </body>
 </html>

@@ -1281,17 +1281,28 @@ async function loadPaidPlan() {
       <td>${fmtD(r.influencer_offer)}</td>
       <td>${fmtD(r.a8_counter)}</td>
       <td style="font-weight:600">${fmtD(r.accepted_offer)}</td>
+      <td class="pp-contract-col hidden">
+        <div style="font-size:11px;margin-bottom:3px">${esc(r.contract_name||"—")}</div>
+        <button class="btn-sec btn-pp-contract" data-idx="${i}" style="font-size:10px;padding:2px 8px">📄 ${r.contract_name ? "Edit" : "Upload"}</button>
+      </td>
       <td style="white-space:nowrap">
         <button class="btn-icon btn-edit-pp" data-idx="${i}" title="Edit">✏</button>
         ${r.id ? `<button class="btn-icon btn-del-pp" data-id="${r.id}" title="Clear plan data" style="color:#666">✕</button>` : ""}
       </td>
     </tr>`;
-  }).join("") : `<tr><td colspan="25" class="empty-cell">No creators in Paid Plan yet. Check the "Paid Plan" box on a creator in the Master Lists tab.</td></tr>`;
+  }).join("") : `<tr><td colspan="26" class="empty-cell">No creators in Paid Plan yet. Check the "Paid Plan" box on a creator in the Master Lists tab.</td></tr>`;
 
   document.querySelectorAll(".btn-edit-pp").forEach(b =>
     b.addEventListener("click", () => {
       const row = rows[parseInt(b.dataset.idx)];
       if (row) openPaidPlanModal(row);
+    })
+  );
+
+  document.querySelectorAll(".btn-pp-contract").forEach(b =>
+    b.addEventListener("click", () => {
+      const row = rows[parseInt(b.dataset.idx)];
+      if (row) openContractUpload(row);
     })
   );
 
@@ -1384,6 +1395,56 @@ function renderUsageByDeliverable(plan) {
     }).join("");
     return `<div style="margin-bottom:6px"><div style="font-size:12px;font-weight:600;margin-bottom:2px">${d.label} (${qty})</div>${rows}</div>`;
   }).join("");
+}
+
+// ── Contract upload (Paid Plan) ────────────────────────────────────────────────
+// Currently hidden behind .pp-contract-col (not yet shown in the UI). Manual
+// entry, same pattern as Live Posts' screenshot upload — the PDF is shown for
+// reference only, not stored; you type the values in yourself.
+const CONTRACT_FIELDS = [
+  { key: "contract_name",         label: "Contract Name / Reference", type: "text"   },
+  { key: "contract_rate",         label: "Rate ($)",                  type: "number" },
+  { key: "contract_usage_start",  label: "Usage Term Start",          type: "date"   },
+  { key: "contract_usage_end",    label: "Usage Term End",            type: "date"   },
+];
+
+function openContractUpload(row) {
+  const inp = $("pp-contract-input");
+  if (!inp) return;
+  inp.value = "";
+  inp.onchange = () => {
+    const file = inp.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const fieldsHtml = CONTRACT_FIELDS.map(f => `
+        <div class="fld">
+          <label>${f.label}</label>
+          <input id="ct-${f.key}" type="${f.type}" value="${row[f.key]!=null?row[f.key]:""}" placeholder="Enter value…">
+        </div>`).join("");
+      openModal(`Upload Contract — ${esc(row.influencer?.name||"")}`, `
+        <embed src="${e.target.result}" type="application/pdf" style="width:100%;height:320px;border-radius:8px;margin-bottom:14px;border:1px solid var(--border)">
+        <div class="form-grid-2">${fieldsHtml}</div>
+      `, async () => {
+        const patch = {};
+        CONTRACT_FIELDS.forEach(f => {
+          const val = $(`ct-${f.key}`)?.value.trim();
+          if (val !== "") patch[f.key] = f.type === "number" ? (parseFloat(val)||null) : val;
+        });
+        if (row.id) {
+          await apiPatch(`/api/paid_plan/${row.id}`, patch);
+        } else {
+          const newPlan = await apiPost("/api/paid_plan", {influencer_id: row.influencer_id, ...patch});
+          if (newPlan?.id) row.id = newPlan.id;
+        }
+        Object.assign(row, patch);
+        closeModal();
+        loadPaidPlan();
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+  inp.click();
 }
 
 async function openPaidPlanModal(row) {

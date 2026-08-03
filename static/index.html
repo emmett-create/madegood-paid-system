@@ -158,6 +158,8 @@
 
       <!-- 3. Paid Plan -->
       <div id="tab-paid-plan" class="tab-panel">
+        <!-- hidden file input for contract PDF upload -->
+        <input type="file" id="pp-contract-input" accept="application/pdf" style="display:none">
         <div class="panel-header">
           <h2>Paid Plan</h2>
           <div class="panel-actions">
@@ -199,6 +201,7 @@
                 <th colspan="2" style="text-align:center;background:rgba(192,132,252,.06);letter-spacing:.4px">ADJUSTMENTS</th>
                 <th colspan="3" style="text-align:center;background:rgba(63,185,80,.06);letter-spacing:.4px">ESTIMATED COST</th>
                 <th colspan="4" style="text-align:center;background:rgba(210,153,34,.06);letter-spacing:.4px">NEGOTIATIONS</th>
+                <th class="pp-contract-col hidden" style="border-bottom:none"></th>
                 <th style="border-bottom:none"></th>
               </tr>
               <tr>
@@ -226,6 +229,7 @@
                 <th style="background:rgba(210,153,34,.04)">Inf. Offer</th>
                 <th style="background:rgba(210,153,34,.04)">A8 Counter</th>
                 <th style="background:rgba(210,153,34,.04)">Accepted Offer</th>
+                <th class="pp-contract-col hidden">Contract</th>
                 <th></th>
               </tr>
             </thead>

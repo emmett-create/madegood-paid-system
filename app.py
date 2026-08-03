@@ -173,15 +173,13 @@ async def update_client_influencer(id: int, req: dict):
 
 @app.get("/api/client/calendar")
 async def get_client_calendar():
-    """Returns content calendar entries for the client view (no auth required)."""
-    rows = await sb_get("content_calendar",
-        f"?client=eq.{current_client.get()}&order=scheduled_date.asc")
-    influencers = await sb_get("paid_influencers",
-        f"?client=eq.{current_client.get()}&select=id,name,ig_handle,tt_handle")
-    inf_map = {i["id"]: i for i in influencers}
-    for r in rows:
-        r["influencer"] = inf_map.get(r["influencer_id"], {})
-    return rows
+    """Returns the same merged calendar data the internal Content Calendar tab uses:
+    manual content_calendar entries (excluding any linked to Content Review, same as
+    internal) plus Content Review rows themselves (due dates + live dates)."""
+    manual_rows = await get_content_calendar()
+    manual = [r for r in manual_rows if not r.get("content_review_id")]
+    cr_rows = await get_content_review()
+    return {"manual": manual, "content_review": cr_rows}
 
 @app.get("/client")
 def client_index():
@@ -619,6 +617,19 @@ async def add_content_review(req: dict):
     check_auth(req.pop("password", None))
     req["client"] = current_client.get()
     return await sb_post("content_review", req)
+
+@app.get("/api/client/content_review")
+async def get_client_content_review():
+    """Read-only mirror of Content Review for the client view — same data, same shape."""
+    return await get_content_review()
+
+@app.patch("/api/client/content_review/{id}")
+async def update_client_content_review(id: int, req: dict):
+    """Allow clients to update only their feedback fields."""
+    allowed = {k: v for k, v in req.items() if k in ("client_feedback_v1", "client_feedback_v2")}
+    if not allowed:
+        raise HTTPException(status_code=400, detail="No allowed fields.")
+    return await sb_patch("content_review", id, allowed)
 
 @app.patch("/api/content_review/{id}")
 async def update_content_review(id: int, req: dict):
