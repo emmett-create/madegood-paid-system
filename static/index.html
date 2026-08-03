@@ -118,6 +118,15 @@
             </select>
           </div>
         </div>
+        <!-- Outreach pivot table -->
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            <span style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--dim);white-space:nowrap">ROWS</span>
+            <div id="or-tally-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+            <button class="btn-sec" id="or-tally-add" style="font-size:11px;padding:3px 10px">+ Add Row</button>
+          </div>
+          <div id="or-tally-body"></div>
+        </div>
         <div class="table-wrap">
           <table class="tbl" id="or-table">
             <thead>
@@ -295,6 +304,15 @@
             <button class="btn-pri" id="btn-add-cr">+ Add</button>
           </div>
         </div>
+        <!-- Content Review pivot table -->
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            <span style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--dim);white-space:nowrap">ROWS</span>
+            <div id="cr-tally-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+            <button class="btn-sec" id="cr-tally-add" style="font-size:11px;padding:3px 10px">+ Add Row</button>
+          </div>
+          <div id="cr-tally-body"></div>
+        </div>
         <div class="table-wrap">
           <table class="tbl" id="cr-table">
             <thead>
@@ -349,6 +367,15 @@
         </div>
         <!-- hidden file input for screenshot upload -->
         <input type="file" id="lp-screenshot-input" accept="image/*" style="display:none">
+        <!-- Live Posts pivot table -->
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            <span style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--dim);white-space:nowrap">ROWS</span>
+            <div id="lp-tally-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+            <button class="btn-sec" id="lp-tally-add" style="font-size:11px;padding:3px 10px">+ Add Row</button>
+          </div>
+          <div id="lp-tally-body"></div>
+        </div>
         <div class="table-wrap">
           <table class="tbl" id="lp-table">
             <thead id="lp-thead"></thead>

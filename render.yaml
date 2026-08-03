@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: madegood-paid-system
+    name: a8-paid-system
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt

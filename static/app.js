@@ -684,6 +684,170 @@ $("pp-tally-add")?.addEventListener("click", () => {
   sel.focus();
 });
 
+// ── Generic Pivot Table factory (used by Outreach, Content Review, Live Posts) ─
+// Click a pivot row to expand a breakdown of the unique creators inside that group.
+function createPivotTable({ prefix, dimsDef, dimValueOf, nameOf, extraCols }) {
+  const state = { dims: [], data: [], expanded: new Set(), lastKeys: [] };
+  const SEP = "|||";
+
+  function renderChips() {
+    const chips = $(`${prefix}-tally-chips`);
+    if (!chips) return;
+    chips.innerHTML = state.dims.map(d => `
+      <span style="background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px">
+        ${dimsDef[d] || d}
+        <button data-dim="${d}" class="${prefix}-tally-rm" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:12px;padding:0;line-height:1">×</button>
+      </span>`).join("");
+    chips.querySelectorAll(`.${prefix}-tally-rm`).forEach(btn =>
+      btn.addEventListener("click", () => {
+        state.dims = state.dims.filter(d => d !== btn.dataset.dim);
+        renderChips();
+        render();
+      })
+    );
+  }
+
+  function render() {
+    const body = $(`${prefix}-tally-body`);
+    if (!body) return;
+    if (!state.dims.length) {
+      body.innerHTML = `<p style="color:var(--dim);font-size:12px;padding:4px 0">Click <strong>+ Add Row</strong> to choose a dimension.</p>`;
+      return;
+    }
+    const groups = {};
+    state.data.forEach(r => {
+      const k = state.dims.map(d => dimValueOf(r, d) || "—").join(SEP);
+      (groups[k] = groups[k] || []).push(r);
+    });
+    const allKeys = Object.keys(groups).sort();
+    state.lastKeys = allKeys;
+    const total = state.data.length;
+    if (!allKeys.length) { body.innerHTML = `<p style="color:var(--dim);font-size:12px">No data.</p>`; return; }
+
+    const thS = "background:var(--panel2);color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.4px;padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap";
+    const tdS = "padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px";
+    const colspan = state.dims.length + (extraCols ? extraCols.length : 0) + 1;
+
+    const headers = state.dims.map(d => `<th style="${thS}">${dimsDef[d]||d}</th>`).join("")
+      + (extraCols ? extraCols.map(c => `<th style="${thS};text-align:center">${c.label}</th>`).join("") : "")
+      + `<th style="${thS};text-align:center">Count</th>`;
+
+    const rowsHtml = allKeys.map((k, idx) => {
+      const rowsForKey = groups[k];
+      const vals = k.split(SEP);
+      const n = rowsForKey.length;
+      const pct = total ? Math.round(n/total*100) : 0;
+      const isOpen = state.expanded.has(k);
+      const extraTds = extraCols ? extraCols.map(c => `<td style="${tdS};text-align:center;color:var(--dim)">${c.compute(rowsForKey)}</td>`).join("") : "";
+      const names = [...new Set(rowsForKey.map(r => nameOf(r) || "—"))];
+      return `<tr class="${prefix}-pivot-row" data-idx="${idx}" style="cursor:pointer" title="Click to see creators">
+          ${vals.map(v=>`<td style="${tdS}">${esc(v)}</td>`).join("")}
+          ${extraTds}
+          <td style="${tdS};text-align:center;font-weight:600;color:var(--red)">${n} <span style="font-size:10px;color:var(--dim)">(${pct}%)</span></td>
+        </tr>
+        <tr class="${prefix}-pivot-breakdown" data-idx="${idx}" style="${isOpen?"":"display:none"}">
+          <td colspan="${colspan}" style="background:var(--panel2);font-size:11px;color:var(--dim);padding:8px 14px;border-bottom:1px solid var(--border)">
+            <strong style="color:var(--text)">Creators (${names.length}):</strong> ${names.map(esc).join(", ") || "—"}
+          </td>
+        </tr>`;
+    }).join("");
+
+    body.innerHTML = `<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>${headers}</tr></thead>
+        <tbody>${rowsHtml}</tbody>
+        <tfoot><tr>
+          ${state.dims.map(()=>`<td style="${tdS};font-weight:700">Total</td>`).join("")}
+          ${extraCols ? extraCols.map(c=>`<td style="${tdS};text-align:center;font-weight:700">${c.compute(state.data)}</td>`).join("") : ""}
+          <td style="${tdS};text-align:center;font-weight:700">${total}</td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+
+    body.querySelectorAll(`.${prefix}-pivot-row`).forEach(tr => {
+      tr.addEventListener("click", () => {
+        const k = state.lastKeys[parseInt(tr.dataset.idx)];
+        if (state.expanded.has(k)) state.expanded.delete(k); else state.expanded.add(k);
+        render();
+      });
+    });
+  }
+
+  $(`${prefix}-tally-add`)?.addEventListener("click", () => {
+    const available = Object.entries(dimsDef).filter(([k]) => !state.dims.includes(k));
+    if (!available.length) return;
+    const sel = document.createElement("select");
+    sel.style.cssText = "background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 10px;font-size:12px;margin-left:6px";
+    sel.innerHTML = `<option value="">Pick dimension…</option>` + available.map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
+    sel.onchange = () => {
+      if (sel.value) { state.dims.push(sel.value); sel.remove(); renderChips(); render(); }
+    };
+    $(`${prefix}-tally-add`).after(sel);
+    sel.focus();
+  });
+
+  return {
+    setData(data) { state.data = data || []; renderChips(); render(); },
+  };
+}
+
+const OR_TALLY_DIMS = {
+  tier:     "Tier",
+  location: "Location",
+  vertical: "Vertical/Archetype",
+  status:   "Outreach Status",
+};
+const orPivot = createPivotTable({
+  prefix: "or",
+  dimsDef: OR_TALLY_DIMS,
+  dimValueOf: (r, d) => {
+    if (d === "tier")     return r.tier;
+    if (d === "location") return r.location;
+    if (d === "vertical") return r.vertical || r.archetype;
+    if (d === "status")   return r.outreach_status;
+    return "—";
+  },
+  nameOf: r => r.name,
+  extraCols: [
+    { label: "IG Feed",  compute: rows => rows.reduce((s,r)=>s+(r.ig_feed_qty||0),0) },
+    { label: "IG Reel",  compute: rows => rows.reduce((s,r)=>s+(r.ig_reel_qty||0),0) },
+    { label: "IG Story", compute: rows => rows.reduce((s,r)=>s+(r.ig_story_qty||0),0) },
+    { label: "TikTok",   compute: rows => rows.reduce((s,r)=>s+(r.tt_qty||0),0) },
+  ],
+});
+
+const CR_TALLY_DIMS = {
+  tier:     "Tier",
+  vertical: "Vertical",
+  campaign: "Campaign",
+};
+const crPivot = createPivotTable({
+  prefix: "cr",
+  dimsDef: CR_TALLY_DIMS,
+  dimValueOf: (r, d) => {
+    if (d === "tier")     return r.influencer?.tier;
+    if (d === "vertical") return r.influencer?.vertical || r.influencer?.archetype;
+    if (d === "campaign") return r.influencer?.campaign;
+    return "—";
+  },
+  nameOf: r => r.influencer?.name,
+});
+
+const LP_TALLY_DIMS = {
+  campaign:    "Campaign",
+  deliverable: "Deliverable",
+};
+const lpPivot = createPivotTable({
+  prefix: "lp",
+  dimsDef: LP_TALLY_DIMS,
+  dimValueOf: (r, d) => {
+    if (d === "campaign")    return r.campaign;
+    if (d === "deliverable") return r.deliverable_type;
+    return "—";
+  },
+  nameOf: r => r.influencer?.name,
+});
+
 // List toggle
 document.querySelectorAll(".list-btn").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -890,6 +1054,9 @@ async function loadOutreach() {
 
   const getPlan = (r) =>
     planMap[r.id] || handlePlanMap[(r.ig_handle||"").toLowerCase()] || {};
+
+  // Pivot table reflects the full dataset, not the search/status-filtered rows below
+  orPivot.setData(data.map(r => ({ ...r, ...getPlan(r) })));
 
   const search = $("or-search")?.value.toLowerCase() || "";
   const status = $("or-filter-status")?.value || "";
@@ -1836,6 +2003,7 @@ async function loadContentReview() {
   // Only removes rows that are completely blank — never deletes data you've entered
   try { await apiPost("/api/content_review/auto_sync", {}); } catch { /* ignore */ }
   const data = await apiGet("/api/content_review");
+  crPivot.setData(data); // pivot reflects the full dataset, not the status filter below
   const filter = $("cr-filter-status")?.value;
   let rows = data;
   if (filter === "needs_review") rows = rows.filter(r => r.status === "New! Needs Client Review");
@@ -2247,6 +2415,7 @@ function renderLivePosts() {
 
 async function loadLivePosts() {
   lpData = await apiGet("/api/live_posts");
+  lpPivot.setData(lpData); // pivot reflects the full dataset, not the TikTok/Reel view toggle
   renderLivePosts();
 }
 
