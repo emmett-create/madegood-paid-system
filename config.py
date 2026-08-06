@@ -9,7 +9,7 @@ import os
 SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://yuzlovqavpeoannfiqka.supabase.co"
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or ""
 
-# Which client this deployment serves: "madegood" | "magna" | "evolvetogether"
+# Which client this deployment serves: "madegood" | "magna" | "evolvetogether" | "stardust"
 CLIENT = os.environ.get("PAID_CLIENT", "madegood")
 
 # Passwords — all deployments share the same internal password for hub auto-auth
@@ -21,6 +21,7 @@ CLIENT_NAME = os.environ.get("CLIENT_NAME", {
     "madegood":      "MadeGood",
     "magna":         "Magna",
     "evolvetogether": "EvolveTogether",
+    "stardust":      "Stardust",
 }.get(CLIENT, CLIENT.title()))
 
 # Archive workspace UUID per client (all use the same token)
@@ -28,6 +29,7 @@ ARCHIVE_WORKSPACE = os.environ.get("ARCHIVE_WORKSPACE", {
     "madegood":       "0cec8ea5-c3b3-4bb1-8083-eaab65719f8e",
     "magna":          "1a9f4270-c1c5-4dde-bcfa-3040589e9184",
     "evolvetogether": "c8493a78-3eb0-4bad-9567-70dc2dc76e98",
+    "stardust":       "d7413c10-4ac9-4a69-b7a6-0e0babaad8a1",
 }.get(CLIENT, ""))
 
 # Budget tracker iframe URL (GitHub Pages) — leave empty if none
@@ -35,6 +37,7 @@ BUDGET_TRACKER_URL = os.environ.get("BUDGET_TRACKER_URL", {
     "madegood":       "https://emmett-create.github.io/madegood-budget-tracker/",
     "evolvetogether": "https://emmett-create.github.io/evolvetogether-budget-tracker/",
     "magna":          "",
+    "stardust":       "https://emmett-create.github.io/stardust-budget-tracker/",
 }.get(CLIENT, ""))
 
 # MadeGood budget tracker Supabase (read-only, only used when CLIENT=madegood)

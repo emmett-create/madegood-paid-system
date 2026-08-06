@@ -18,7 +18,7 @@ app = FastAPI(title="Agency 8 Paid System")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── Multi-tenant client context ───────────────────────────────────────────────
-VALID_CLIENTS = {"madegood", "magna", "evolvetogether"}
+VALID_CLIENTS = {"madegood", "magna", "evolvetogether", "stardust"}
 current_client: ContextVar[str] = ContextVar("current_client", default=config.CLIENT)
 
 class ClientContextMiddleware(BaseHTTPMiddleware):
@@ -845,11 +845,20 @@ async def delete_budget(id: int, password: str = ""):
 ARCHIVE_URL   = "https://app.archive.com/api/v2"
 ARCHIVE_TOKEN = os.environ.get("ARCHIVE_APP_TOKEN", "WLeD7XUAgkWeuPUmwHHF5DHLrwZWiX3B")
 
+# Per-client Archive workspace — resolved from current_client on every request,
+# not a single fixed value, since one server process serves all clients.
+ARCHIVE_WORKSPACES = {
+    "madegood":       "0cec8ea5-c3b3-4bb1-8083-eaab65719f8e",
+    "magna":          "1a9f4270-c1c5-4dde-bcfa-3040589e9184",
+    "evolvetogether": "c8493a78-3eb0-4bad-9567-70dc2dc76e98",
+    "stardust":       "d7413c10-4ac9-4a69-b7a6-0e0babaad8a1",
+}
+
 async def archive_query(query: str, variables: dict) -> dict:
     headers = {
         "Authorization": f"Bearer {ARCHIVE_TOKEN}",
         "Content-Type": "application/json",
-        "WORKSPACE-ID": config.ARCHIVE_WORKSPACE,
+        "WORKSPACE-ID": ARCHIVE_WORKSPACES.get(current_client.get(), ""),
     }
     async with httpx.AsyncClient(timeout=30) as c:
         r = await c.post(ARCHIVE_URL, json={"query": query, "variables": variables}, headers=headers)
@@ -873,7 +882,11 @@ def detect_deliverable_type(url: str, platform: str) -> str:
 @app.get("/api/archive_debug")
 async def archive_debug():
     """Diagnostic endpoint — tests Archive API connection and returns raw results."""
-    results = {"token": ARCHIVE_TOKEN[:8] + "...", "workspace": config.ARCHIVE_WORKSPACE}
+    results = {
+        "token": ARCHIVE_TOKEN[:8] + "...",
+        "client": current_client.get(),
+        "workspace": ARCHIVE_WORKSPACES.get(current_client.get(), ""),
+    }
 
     # Test 1: campaigns query
     try:
@@ -1097,11 +1110,13 @@ CLIENT_NAMES = {
     "madegood":       "MadeGood",
     "magna":          "Magna",
     "evolvetogether": "EvolveTogether",
+    "stardust":       "Stardust",
 }
 BUDGET_URLS = {
     "madegood":       "https://emmett-create.github.io/madegood-budget-tracker/",
     "evolvetogether": "https://emmett-create.github.io/evolvetogether-budget-tracker/",
     "magna":          "",
+    "stardust":       "https://emmett-create.github.io/stardust-budget-tracker/",
 }
 
 @app.get("/api/app_config")
@@ -1120,12 +1135,14 @@ def hub():
 @app.get("/madegood")
 @app.get("/magna")
 @app.get("/evolvetogether")
+@app.get("/stardust")
 def client_app():
     return FileResponse(os.path.join(STATIC, "index.html"))
 
 @app.get("/madegood/client")
 @app.get("/magna/client")
 @app.get("/evolvetogether/client")
+@app.get("/stardust/client")
 def client_view():
     return FileResponse(os.path.join(STATIC, "client.html"))
 

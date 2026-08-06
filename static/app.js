@@ -27,7 +27,7 @@ $("gate-btn").addEventListener("click", async () => {
 $("gate-pw").addEventListener("keydown", e => { if (e.key === "Enter") $("gate-btn").click(); });
 
 // ── Client context (read from URL path) ──────────────────────────────────────
-const _VALID_CLIENTS = ["madegood", "magna", "evolvetogether"];
+const _VALID_CLIENTS = ["madegood", "magna", "evolvetogether", "stardust"];
 const _pathClient = window.location.pathname.split("/").filter(Boolean)[0] || "";
 const CLIENT_CTX = _VALID_CLIENTS.includes(_pathClient) ? _pathClient : "madegood";
 

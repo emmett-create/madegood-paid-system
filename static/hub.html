@@ -68,6 +68,11 @@
         <div class="desc">Paid influencer management</div>
         <div class="arrow">→</div>
       </a>
+      <a class="client-card" id="card-stardust" href="#">
+        <div class="name">Stardust</div>
+        <div class="desc">Paid influencer management</div>
+        <div class="arrow">→</div>
+      </a>
     </div>
   </div>
 </div>
@@ -79,6 +84,7 @@ const CLIENTS = {
   madegood:       { url: "https://a8-paid-system.onrender.com/madegood",        pw: "a8paid123" },
   magna:          { url: "https://a8-paid-system.onrender.com/magna",            pw: "a8paid123" },
   evolvetogether: { url: "https://a8-paid-system.onrender.com/evolvetogether",   pw: "a8paid123" },
+  stardust:       { url: "https://a8-paid-system.onrender.com/stardust",        pw: "a8paid123" },
 };
 
 function buildUrl(client) {
@@ -91,6 +97,7 @@ function showHub() {
   document.getElementById("card-madegood").href       = buildUrl(CLIENTS.madegood);
   document.getElementById("card-magna").href          = buildUrl(CLIENTS.magna);
   document.getElementById("card-evolvetogether").href = buildUrl(CLIENTS.evolvetogether);
+  document.getElementById("card-stardust").href       = buildUrl(CLIENTS.stardust);
 }
 
 // Auto-show hub if already authenticated this session
