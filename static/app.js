@@ -3,6 +3,13 @@
 let PW = "";
 const $ = id => document.getElementById(id);
 const esc = s => String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+// Escapes text, then turns pasted URLs into clickable links (for read-only display cells).
+const linkify = s => esc(s).replace(/(https?:\/\/[^\s<]+)/g, url => {
+  const m = url.match(/^(.*?)([).,;:!?\]"']*)$/);
+  const core = m ? m[1] : url;
+  const trail = m ? m[2] : "";
+  return `<a href="${core}" target="_blank" rel="noopener" style="color:var(--red)">${core}</a>${trail}`;
+});
 const fmt = n => n != null ? Number(n).toLocaleString() : "—";
 const fmtD = n => n != null && n !== "" ? "$" + Math.round(Number(n)).toLocaleString() : "—";
 const fmtDate = s => s ? new Date(s + "T12:00:00").toLocaleDateString("en-US", {month:"short",day:"numeric",year:"numeric"}) : "—";
@@ -201,6 +208,37 @@ function selectCampaign(val) {
   if (panel) panel.style.display = "none";
 }
 
+// ── Vertical picker helpers (multi-select checklist, used in Edit Creator modal) ──
+function toggleVerticalPanel() {
+  const panel = document.getElementById("vert-panel");
+  if (!panel) return;
+  const isOpen = panel.style.display !== "none";
+  panel.style.display = isOpen ? "none" : "block";
+  if (isOpen) return;
+  setTimeout(() => {
+    document.addEventListener("click", function outsideClick(e) {
+      if (!document.getElementById("vert-panel")?.contains(e.target) &&
+          e.target.id !== "vert-trigger" && !document.getElementById("vert-trigger")?.contains(e.target)) {
+        const p = document.getElementById("vert-panel");
+        if (p) p.style.display = "none";
+        document.removeEventListener("click", outsideClick);
+      }
+    });
+  }, 10);
+}
+
+function updateVerticalDisplay() {
+  const checked = Array.from(document.querySelectorAll(".mf-vertical-cb:checked")).map(cb => cb.value);
+  const joined = checked.join(", ");
+  const hidden = document.getElementById("mf-vertical");
+  const display = document.getElementById("vert-val-display");
+  if (hidden) hidden.value = joined;
+  if (display) {
+    display.textContent = joined || "Select verticals…";
+    display.style.color = joined ? "var(--text)" : "var(--dim)";
+  }
+}
+
 document.getElementById("btn-manage-campaigns")?.addEventListener("click", async () => {
   const campaigns = await apiGet("/api/campaigns");
   const renderList = (list) => list.map((c, i) => `
@@ -215,27 +253,25 @@ document.getElementById("btn-manage-campaigns")?.addEventListener("click", async
     <button id="camp-add-item" class="btn-sec" style="width:100%;margin-top:4px">+ Add another item</button>`;
 
   openModal("Manage Campaigns", bodyHtml, async () => {
-    // Save renames
     const rows = document.querySelectorAll(".camp-row");
     for (const row of rows) {
       const input = row.querySelector(".camp-edit");
       const orig = input.dataset.orig;
       const newVal = input.value.trim();
-      if (newVal && newVal !== orig) {
-        // Rename: clear old, set new on all creators with that campaign
-        const withOld = await apiGet("/api/campaigns");
-        const affected = await fetch(`/api/influencers?list_type=INT`); // get all & update by handle
-        await fetch(`/api/campaigns/${encodeURIComponent(orig)}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
-        // Note: user would need to re-assign manually for renames — keep simple for now
+      if (!newVal || newVal === orig) continue;
+      if (!orig) {
+        // Brand new campaign (from "+ Add another item") — reserve the name so it
+        // shows up as an option even before any creator is assigned to it.
+        await apiPost("/api/campaigns", {name: newVal});
+      } else {
+        // Rename: updates every creator using it, plus the reserved-name record.
+        await apiPatch(`/api/campaigns/${encodeURIComponent(orig)}`, {new_name: newVal});
       }
     }
     refreshCampaignDatalist();
     loadMasterList();
     closeModal();
   });
-
-  // Hide Save for now — use only delete/add actions
-  document.getElementById("modal-submit").style.display = "none";
 
   document.getElementById("camp-add-item").addEventListener("click", () => {
     const list = document.getElementById("camp-manage-list");
@@ -254,7 +290,7 @@ document.getElementById("btn-manage-campaigns")?.addEventListener("click", async
       if (!name) { btn.closest(".camp-row").remove(); return; }
       if (!confirm(`Remove "${name}" from all creators?`)) return;
       btn.disabled = true;
-      await fetch(`/api/campaigns/${encodeURIComponent(name)}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
+      await apiDelete(`/api/campaigns/${encodeURIComponent(name)}?password=${encodeURIComponent(PW)}`);
       btn.closest(".camp-row").remove();
       refreshCampaignDatalist();
       loadMasterList();
@@ -512,12 +548,30 @@ function renderTally() {
   const dims = tallyDimensions;
   const SEP  = "|||";
 
-  // Build composite key from all selected dimensions
-  const keyOf = r => dims.map(d => r[d] || "—").join(SEP);
+  // A creator with multiple verticals (comma-joined) fans out into one group
+  // membership per vertical, rather than one combined "A, B" bucket.
+  const valuesFor = (r, d) => {
+    if (d === "vertical") {
+      const raw = r.vertical || r.archetype || "";
+      const parts = String(raw).split(",").map(s => s.trim()).filter(Boolean);
+      return parts.length ? parts : ["—"];
+    }
+    return [r[d] || "—"];
+  };
+  const expandKeys = r => {
+    let combos = [[]];
+    dims.forEach(d => {
+      const vals = valuesFor(r, d);
+      const next = [];
+      combos.forEach(c => vals.forEach(v => next.push([...c, v])));
+      combos = next;
+    });
+    return combos.map(c => c.join(SEP));
+  };
 
   const intCounts = {}, extCounts = {};
-  tallyIntData.forEach(r => { const k = keyOf(r); intCounts[k] = (intCounts[k]||0)+1; });
-  tallyExtData.forEach(r => { const k = keyOf(r); extCounts[k] = (extCounts[k]||0)+1; });
+  tallyIntData.forEach(r => { expandKeys(r).forEach(k => { intCounts[k] = (intCounts[k]||0)+1; }); });
+  tallyExtData.forEach(r => { expandKeys(r).forEach(k => { extCounts[k] = (extCounts[k]||0)+1; }); });
 
   const allKeys = [...new Set([...Object.keys(intCounts), ...Object.keys(extCounts)])].sort();
   const total   = allKeys.reduce((s,k)=>(s+(intCounts[k]||0)+(extCounts[k]||0)),0);
@@ -605,17 +659,32 @@ const PP_TALLY_DIMS = {
   usage:      "Usage",
 };
 
-function ppTallyKeyOf(r) {
-  return ppTallyDimensions.map(d => {
-    if (d === "month_live") return ppCrMonthMap[(r.influencer?.ig_handle||"").toLowerCase()] || "—";
-    if (d === "campaign")   return r.influencer?.campaign || "—";
-    if (d === "status")     return r.status || "—";
-    if (d === "tier")       return r.influencer?.tier || "—";
-    if (d === "vertical")   return r.influencer?.vertical || "—";
-    if (d === "collab")     return ppRowHasCollab(r) ? "Yes" : "No";
-    if (d === "usage")      return ppRowUsage(r) || "—";
-    return "—";
-  }).join("|||");
+function ppTallyValuesOf(r, d) {
+  // A creator with multiple verticals (comma-joined) fans out into one group
+  // membership per vertical, rather than one combined "A, B" bucket.
+  if (d === "vertical") {
+    const raw = r.influencer?.vertical || r.influencer?.archetype || "";
+    const parts = String(raw).split(",").map(s => s.trim()).filter(Boolean);
+    return parts.length ? parts : ["—"];
+  }
+  if (d === "month_live") return [ppCrMonthMap[(r.influencer?.ig_handle||"").toLowerCase()] || "—"];
+  if (d === "campaign")   return [r.influencer?.campaign || "—"];
+  if (d === "status")     return [r.status || "—"];
+  if (d === "tier")       return [r.influencer?.tier || "—"];
+  if (d === "collab")     return [ppRowHasCollab(r) ? "Yes" : "No"];
+  if (d === "usage")      return [ppRowUsage(r) || "—"];
+  return ["—"];
+}
+
+function ppTallyExpandKeys(r) {
+  let combos = [[]];
+  ppTallyDimensions.forEach(d => {
+    const vals = ppTallyValuesOf(r, d);
+    const next = [];
+    combos.forEach(c => vals.forEach(v => next.push([...c, v])));
+    combos = next;
+  });
+  return combos.map(c => c.join("|||"));
 }
 
 function ppRowHasCollab(r) {
@@ -655,7 +724,7 @@ function renderPpTally() {
   if (!ppTallyData.length) return;
   const SEP = "|||";
   const counts = {};
-  ppTallyData.forEach(r => { const k = ppTallyKeyOf(r); counts[k] = (counts[k]||0)+1; });
+  ppTallyData.forEach(r => { ppTallyExpandKeys(r).forEach(k => { counts[k] = (counts[k]||0)+1; }); });
   const allKeys = Object.keys(counts).sort();
   const total = Object.values(counts).reduce((a,b)=>a+b,0);
   const thS = "background:var(--panel2);color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.4px;padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap";
@@ -694,9 +763,33 @@ $("pp-tally-add")?.addEventListener("click", () => {
 
 // ── Generic Pivot Table factory (used by Outreach, Content Review, Live Posts) ─
 // Click a pivot row to expand a breakdown of the unique creators inside that group.
-function createPivotTable({ prefix, dimsDef, dimValueOf, nameOf, extraCols }) {
+function createPivotTable({ prefix, dimsDef, dimValueOf, nameOf, extraCols, multiValueDims }) {
   const state = { dims: [], data: [], expanded: new Set(), lastKeys: [] };
   const SEP = "|||";
+  const mvSet = new Set(multiValueDims || []);
+
+  // Dimensions listed in multiValueDims (e.g. "vertical") hold comma-joined
+  // multi-value strings — a creator with 2 verticals fans out into a group
+  // membership per vertical instead of one combined "A, B" bucket.
+  function valuesFor(r, d) {
+    const raw = dimValueOf(r, d);
+    if (mvSet.has(d)) {
+      const parts = String(raw || "").split(",").map(s => s.trim()).filter(Boolean);
+      return parts.length ? parts : ["—"];
+    }
+    return [raw || "—"];
+  }
+
+  function expandKeys(r) {
+    let combos = [[]];
+    state.dims.forEach(d => {
+      const vals = valuesFor(r, d);
+      const next = [];
+      combos.forEach(c => vals.forEach(v => next.push([...c, v])));
+      combos = next;
+    });
+    return combos.map(c => c.join(SEP));
+  }
 
   function renderChips() {
     const chips = $(`${prefix}-tally-chips`);
@@ -724,8 +817,7 @@ function createPivotTable({ prefix, dimsDef, dimValueOf, nameOf, extraCols }) {
     }
     const groups = {};
     state.data.forEach(r => {
-      const k = state.dims.map(d => dimValueOf(r, d) || "—").join(SEP);
-      (groups[k] = groups[k] || []).push(r);
+      expandKeys(r).forEach(k => { (groups[k] = groups[k] || []).push(r); });
     });
     const allKeys = Object.keys(groups).sort();
     state.lastKeys = allKeys;
@@ -822,6 +914,7 @@ const orPivot = createPivotTable({
     { label: "IG Story", compute: rows => rows.reduce((s,r)=>s+(r.ig_story_qty||0),0) },
     { label: "TikTok",   compute: rows => rows.reduce((s,r)=>s+(r.tt_qty||0),0) },
   ],
+  multiValueDims: ["vertical"],
 });
 
 const CR_TALLY_DIMS = {
@@ -839,6 +932,7 @@ const crPivot = createPivotTable({
     return "—";
   },
   nameOf: r => r.influencer?.name,
+  multiValueDims: ["vertical"],
 });
 
 const LP_TALLY_DIMS = {
@@ -892,6 +986,12 @@ function calcTier(igFol, ttFol) {
   return "Mega";
 }
 
+const VERTICAL_OPTIONS = [
+  "Health / Wellness", "Beauty / Skincare", "Fashion / Lifestyle", "Cool Guys",
+  "Models", "Parents", "Student", "Travel", "Creatives", "Food / Bev",
+  "Professionals", "Fitness",
+];
+
 function openInfluencerModal(existing) {
   refreshCampaignDatalist(); // ensure campaign options are fresh
   const isEdit = !!existing;
@@ -927,22 +1027,22 @@ function openInfluencerModal(existing) {
       <div class="fld"><label>Gender</label>
         <select id="mf-gender"><option value="">—</option><option ${e.gender==="Female"?"selected":""}>Female</option><option ${e.gender==="Male"?"selected":""}>Male</option><option ${e.gender==="Non-binary"?"selected":""}>Non-binary</option></select>
       </div>
-      <div class="fld"><label>Vertical / Archetype</label>
-        <select id="mf-vertical">
-          <option value="">—</option>
-          <option ${ (e.vertical||e.archetype)==="Health / Wellness"?"selected":""}>Health / Wellness</option>
-          <option ${ (e.vertical||e.archetype)==="Beauty / Skincare"?"selected":""}>Beauty / Skincare</option>
-          <option ${ (e.vertical||e.archetype)==="Fashion / Lifestyle"?"selected":""}>Fashion / Lifestyle</option>
-          <option ${ (e.vertical||e.archetype)==="Cool Guys"?"selected":""}>Cool Guys</option>
-          <option ${ (e.vertical||e.archetype)==="Models"?"selected":""}>Models</option>
-          <option ${ (e.vertical||e.archetype)==="Parents"?"selected":""}>Parents</option>
-          <option ${ (e.vertical||e.archetype)==="Student"?"selected":""}>Student</option>
-          <option ${ (e.vertical||e.archetype)==="Travel"?"selected":""}>Travel</option>
-          <option ${ (e.vertical||e.archetype)==="Creatives"?"selected":""}>Creatives</option>
-          <option ${ (e.vertical||e.archetype)==="Food / Bev"?"selected":""}>Food / Bev</option>
-          <option ${ (e.vertical||e.archetype)==="Professionals"?"selected":""}>Professionals</option>
-          <option ${ (e.vertical||e.archetype)==="Fitness"?"selected":""}>Fitness</option>
-        </select>
+      <div class="fld" style="position:relative">
+        <label>Vertical / Archetype (select any that apply)</label>
+        <div id="vert-trigger" onclick="toggleVerticalPanel()" style="cursor:pointer;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;display:flex;justify-content:space-between;align-items:center;min-height:37px">
+          <span id="vert-val-display" style="color:${(e.vertical||e.archetype)?'var(--text)':'var(--dim)'}">${esc((e.vertical||e.archetype)||"Select verticals…")}</span>
+          <span style="color:var(--dim);font-size:10px">▾</span>
+        </div>
+        <div id="vert-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:10001;padding:10px;max-height:220px;overflow-y:auto">
+          ${VERTICAL_OPTIONS.map(v => {
+            const checked = ((e.vertical||e.archetype||"").split(",").map(s=>s.trim())).includes(v);
+            return `<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:13px;cursor:pointer">
+              <input type="checkbox" class="mf-vertical-cb" value="${esc(v)}" ${checked?"checked":""} onchange="updateVerticalDisplay()">
+              ${esc(v)}
+            </label>`;
+          }).join("")}
+        </div>
+        <input type="hidden" id="mf-vertical" value="${esc((e.vertical||e.archetype)||"")}">
       </div>
       <div class="fld"><label>Country</label>
         <select id="mf-country">
@@ -1469,7 +1569,10 @@ async function openPaidPlanModal(row) {
         </select>
       </div>
     </div>
-    <div class="form-section">Impressions</div>
+    <div class="form-section" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Impressions</span>
+      <button type="button" class="btn-sec" id="ppf-imp-upload-btn" style="font-size:11px;padding:4px 10px">📷 Upload Screenshot</button>
+    </div>
     <div class="form-grid-2">
       <div class="fld"><label>IG Avg Impressions</label><input type="number" id="ppf-ig-imp" value="${e.ig_impressions||e.ig_reels_impressions||""}"></div>
       <div class="fld"><label>TikTok Avg Impressions</label><input type="number" id="ppf-tt-imp" value="${e.tt_impressions||""}"></div>
@@ -1611,7 +1714,49 @@ async function openPaidPlanModal(row) {
      "ppf-reel-cpv","ppf-story-cpv","ppf-feed-cpv","ppf-tt-cpv",
      "ppf-org-pct","ppf-paid-pct"].forEach(id => $(id)?.addEventListener("input", updateCalc));
     updateCalc(); // run immediately with existing values
+
+    $("ppf-imp-upload-btn")?.addEventListener("click", () => openImpressionsUpload(updateCalc));
   }, 0);
+}
+
+// Reads impression metrics out of an uploaded analytics screenshot via Claude
+// vision and fills ppf-ig-imp / ppf-tt-imp — unlike the manual screenshot
+// uploads elsewhere (Live Posts, Contract), this one auto-extracts the numbers.
+function openImpressionsUpload(onFilled) {
+  const inp = $("pp-impressions-input");
+  if (!inp) return;
+  inp.value = "";
+  inp.onchange = () => {
+    const file = inp.files[0];
+    if (!file) return;
+    const btn = $("ppf-imp-upload-btn");
+    const reader = new FileReader();
+    reader.onload = async e => {
+      const dataUrl = e.target.result;
+      const [, media_type, image_base64] = dataUrl.match(/^data:([^;]+);base64,(.+)$/) || [];
+      if (!image_base64) { alert("Could not read that image file."); return; }
+      if (btn) { btn.disabled = true; btn.textContent = "Reading…"; }
+      try {
+        const fields = [
+          {key: "ig_impressions", label: "IG Avg Impressions (or Reach if not labeled)", type: "number"},
+          {key: "tt_impressions", label: "TikTok Avg Impressions (or Views if not labeled)", type: "number"},
+        ];
+        const result = await apiPost("/api/extract_screenshot_metrics", {image_base64, media_type, fields});
+        if (result.ig_impressions != null && $("ppf-ig-imp")) $("ppf-ig-imp").value = result.ig_impressions;
+        if (result.tt_impressions != null && $("ppf-tt-imp")) $("ppf-tt-imp").value = result.tt_impressions;
+        if (result.ig_impressions == null && result.tt_impressions == null) {
+          alert("Couldn't find impressions numbers in that screenshot — enter them manually.");
+        }
+        onFilled?.();
+      } catch (err) {
+        alert("Couldn't read that screenshot: " + err.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "📷 Upload Screenshot"; }
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+  inp.click();
 }
 
 // ── 4. Content Calendar ───────────────────────────────────────────────────────
@@ -1805,7 +1950,7 @@ function renderCalendar() {
       <td>${fmtDeliverable(r.deliverable)}</td>
       <td>${esc(r.usage||"")}</td>
       <td>${r.collab?"✓":""}</td>
-      <td>${esc(r.notes||"")}</td>
+      <td>${linkify(r.notes||"")}</td>
       <td><button class="btn-icon" onclick="deleteCalEntry(${r.id})">✕</button></td>
     </tr>`).join("") : `<tr><td colspan="7" class="empty-cell">No entries this month.</td></tr>`;
   }
@@ -2502,6 +2647,7 @@ function openScreenshotUpload(postId, deliverableType) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = e => {
+      const dataUrl = e.target.result;
       const row = lpData.find(r => String(r.id) === String(postId)) || {};
       const fieldsHtml = fields.map(f => `
         <div class="fld">
@@ -2509,7 +2655,8 @@ function openScreenshotUpload(postId, deliverableType) {
           <input id="sc-${f.key}" type="${f.type}" value="${row[f.key]!=null?row[f.key]:""}" placeholder="Enter value…">
         </div>`).join("");
       openModal(`Upload Metrics — ${esc(deliverableType)}`, `
-        <img src="${e.target.result}" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;margin-bottom:14px;border:1px solid var(--border)">
+        <img src="${dataUrl}" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;margin-bottom:8px;border:1px solid var(--border)">
+        <div id="sc-status" style="font-size:12px;color:var(--dim);margin-bottom:10px">Reading screenshot…</div>
         <div class="form-grid-2">${fieldsHtml}</div>
       `, async () => {
         const patch = {};
@@ -2523,6 +2670,21 @@ function openScreenshotUpload(postId, deliverableType) {
         closeModal();
         renderLivePosts();
       });
+
+      const [, media_type, image_base64] = dataUrl.match(/^data:([^;]+);base64,(.+)$/) || [];
+      const status = $("sc-status");
+      if (!image_base64) { if (status) status.textContent = "Could not read that image file — enter values manually."; return; }
+      apiPost("/api/extract_screenshot_metrics", {image_base64, media_type, fields})
+        .then(result => {
+          let filled = 0;
+          fields.forEach(f => {
+            if (result[f.key] != null && $(`sc-${f.key}`)) { $(`sc-${f.key}`).value = result[f.key]; filled++; }
+          });
+          if (status) status.textContent = filled
+            ? `Auto-filled ${filled} of ${fields.length} field${fields.length===1?"":"s"} from the screenshot — check before saving.`
+            : "Couldn't find these metrics in that screenshot — enter them manually.";
+        })
+        .catch(err => { if (status) status.textContent = "Couldn't read that screenshot: " + err.message; });
     };
     reader.readAsDataURL(file);
   };
@@ -2547,7 +2709,7 @@ async function loadGiftedLicensing() {
     <td>${fmtD(r.final_rate)}</td>
     <td>${r.live_link?`<a href="${esc(r.live_link)}" target="_blank" style="color:var(--red)">View ↗</a>`:"—"}</td>
     <td style="font-size:11px">${esc(r.ig_spark_code||"—")}</td>
-    <td style="font-size:11px;color:var(--dim)">${esc(r.notes||"")}</td>
+    <td style="font-size:11px;color:var(--dim)">${linkify(r.notes||"")}</td>
     <td>
       <button class="btn-icon btn-edit-gl" data-id="${r.id}">✏</button>
       <button class="btn-icon btn-del-gl" data-id="${r.id}">✕</button>
@@ -2829,7 +2991,7 @@ async function loadBudget() {
     <td>${esc(campaigns[e.category]?.label||e.category||"")}</td>
     <td>${esc(e.creator_handle?`@${e.creator_handle}`:"")} ${esc(e.description||"")}</td>
     <td style="font-weight:600">$${Math.round(Number(e.amount)).toLocaleString()}</td>
-    <td>${esc(e.notes||"")}</td>
+    <td>${linkify(e.notes||"")}</td>
     <td>
       <button class="btn-icon btn-del-budget" data-id="${e.id}">✕</button>
     </td>

@@ -3,7 +3,9 @@ MadeGood Paid System — FastAPI backend
 """
 
 import os
+import json
 import httpx
+from anthropic import Anthropic
 from contextvars import ContextVar
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.responses import FileResponse
@@ -44,6 +46,16 @@ class AuthBody(BaseModel):
 def check_auth(password: Optional[str]):
     if config.APP_PASSWORD and password != config.APP_PASSWORD:
         raise HTTPException(status_code=401, detail="Wrong password.")
+
+_anthropic_client: Optional[Anthropic] = None
+
+def get_anthropic_client() -> Anthropic:
+    global _anthropic_client
+    if not config.ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY is not configured on this deployment.")
+    if _anthropic_client is None:
+        _anthropic_client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    return _anthropic_client
 
 # ── Supabase helpers ──────────────────────────────────────────────────────────
 def sb_headers():
@@ -133,24 +145,57 @@ def auth_client(req: PwCheck):
 
 @app.get("/api/campaigns")
 async def get_campaigns():
-    """Returns all distinct campaign values used across the master list."""
+    """Returns all distinct campaign values used across the master list, plus any
+    reserved campaign names that have been created but not yet assigned to a creator."""
     rows = await sb_get("paid_influencers",
         f"?client=eq.{current_client.get()}&campaign=not.is.null&select=campaign")
+    reserved = await sb_get("campaigns", f"?client=eq.{current_client.get()}&select=name")
     seen, result = set(), []
-    for r in rows:
-        c = (r.get("campaign") or "").strip()
+    for c in [(r.get("campaign") or "").strip() for r in rows] + [(r.get("name") or "").strip() for r in reserved]:
         if c and c not in seen:
             seen.add(c); result.append(c)
     return sorted(result)
 
+@app.post("/api/campaigns")
+async def create_campaign(req: dict):
+    """Reserve a new campaign name so it shows up as an option before any creator uses it."""
+    check_auth(req.pop("password", None))
+    name = (req.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Campaign name is required.")
+    existing = await sb_get("campaigns", f"?client=eq.{current_client.get()}&name=eq.{name}&select=id")
+    if not existing:
+        await sb_post("campaigns", {"client": current_client.get(), "name": name})
+    return {"ok": True, "name": name}
+
+@app.patch("/api/campaigns/{name}")
+async def rename_campaign(name: str, req: dict):
+    """Rename a campaign everywhere it's used — on all creators AND the reserved-name record."""
+    check_auth(req.pop("password", None))
+    new_name = (req.get("new_name") or "").strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="new_name is required.")
+    rows = await sb_get("paid_influencers",
+        f"?client=eq.{current_client.get()}&campaign=eq.{name}&select=id")
+    for r in rows:
+        await sb_patch("paid_influencers", r["id"], {"campaign": new_name})
+    reserved = await sb_get("campaigns", f"?client=eq.{current_client.get()}&name=eq.{name}&select=id")
+    for r in reserved:
+        await sb_patch("campaigns", r["id"], {"name": new_name})
+    return {"renamed": len(rows)}
+
 @app.delete("/api/campaigns/{name}")
 async def delete_campaign(name: str, password: str = ""):
-    """Remove a campaign option by clearing it from all creators that have it."""
+    """Remove a campaign option by clearing it from all creators that have it, and
+    deleting the reserved-name record if one exists."""
     check_auth(password)
     rows = await sb_get("paid_influencers",
         f"?client=eq.{current_client.get()}&campaign=eq.{name}&select=id")
     for r in rows:
         await sb_patch("paid_influencers", r["id"], {"campaign": None})
+    reserved = await sb_get("campaigns", f"?client=eq.{current_client.get()}&name=eq.{name}&select=id")
+    for r in reserved:
+        await sb_delete("campaigns", r["id"])
     return {"cleared": len(rows)}
 
 @app.get("/api/client/influencers")
@@ -250,8 +295,14 @@ async def update_influencer(id: int, req: dict):
     check_auth(req.pop("password", None))
     result = await sb_patch("paid_influencers", id, req)
 
-    # Sync campaign across all records with the same ig_handle
-    if "campaign" in req:
+    # Sync shared fields across all records with the same ig_handle. Creators copied to the
+    # external list live as a SEPARATE row (see "Copy to External"); without this sync, a
+    # field saved on one duplicate silently "disappears" whenever get_outreach()'s dedup
+    # happens to surface the other, stale duplicate on the next load.
+    SYNC_FIELDS = ("campaign", "outreach_date", "last_contact", "outreach_status",
+                   "outreach_owner", "outreach_notes", "initial_rate", "quoted_rate")
+    sync_payload = {f: req[f] for f in SYNC_FIELDS if f in req}
+    if sync_payload:
         try:
             inf_rec = await sb_get("paid_influencers", f"?id=eq.{id}&select=ig_handle")
             handle = (inf_rec[0].get("ig_handle") or "").strip() if inf_rec else ""
@@ -259,7 +310,7 @@ async def update_influencer(id: int, req: dict):
                 others = await sb_get("paid_influencers",
                     f"?ig_handle=eq.{handle}&id=neq.{id}&select=id")
                 for o in others:
-                    await sb_patch("paid_influencers", o["id"], {"campaign": req["campaign"]})
+                    await sb_patch("paid_influencers", o["id"], sync_payload)
         except Exception:
             pass
 
@@ -414,16 +465,73 @@ async def delete_paid_plan(id: int, password: str = ""):
     await sb_delete("paid_plan", id)
     return {"ok": True}
 
+def build_extraction_schema(fields: list) -> dict:
+    props = {}
+    for f in fields:
+        val_type = "number" if f.get("type") == "number" else "string"
+        props[f["key"]] = {"anyOf": [{"type": val_type}, {"type": "null"}]}
+    return {
+        "type": "object",
+        "properties": props,
+        "required": [f["key"] for f in fields],
+        "additionalProperties": False,
+    }
+
+@app.post("/api/extract_screenshot_metrics")
+async def extract_screenshot_metrics(req: dict):
+    """Generic screenshot-to-numbers extraction (Claude vision) used by both the Paid
+    Plan Impressions upload and the Live Posts metrics upload. Caller supplies the
+    exact fields it wants read off the screenshot; the model returns those, and only
+    those, keyed by field `key`."""
+    check_auth(req.pop("password", None))
+    image_b64 = req.get("image_base64")
+    media_type = req.get("media_type") or "image/png"
+    fields = req.get("fields") or []
+    if not image_b64:
+        raise HTTPException(status_code=400, detail="image_base64 is required.")
+    if not fields:
+        raise HTTPException(status_code=400, detail="fields is required.")
+
+    field_list = "\n".join(f"- {f['key']}: {f['label']}" for f in fields)
+    client = get_anthropic_client()
+    response = client.messages.create(
+        model="claude-opus-5",
+        max_tokens=2048,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": image_b64}},
+                {"type": "text", "text": (
+                    "This is a screenshot of Instagram or TikTok analytics/insights. Extract exactly these "
+                    "metrics as shown on screen:\n" + field_list + "\n\n"
+                    "For numeric metrics, expand abbreviations to full integers (e.g. '12.3K' -> 12300, "
+                    "'1.2M' -> 1200000), no commas or units. For duration/time metrics, return the text "
+                    "exactly as displayed (e.g. '1:32' or '45s'). Return null for any metric not visible "
+                    "in the screenshot."
+                )},
+            ],
+        }],
+        output_config={"format": {"type": "json_schema", "schema": build_extraction_schema(fields)}},
+    )
+
+    if response.stop_reason == "refusal":
+        raise HTTPException(status_code=502, detail="Claude declined to process this image.")
+
+    text = next(b.text for b in response.content if b.type == "text")
+    return json.loads(text)
+
 # ── Outreach (updates on influencer records) ──────────────────────────────────
 @app.get("/api/outreach")
 async def get_outreach():
     rows = await sb_get("paid_influencers",
-        f"?client=eq.{current_client.get()}&order=name.asc"
+        f"?client=eq.{current_client.get()}&order=name.asc,id.asc"
         f"&select=id,name,ig_handle,ig_url,tt_handle,tt_url,ig_followers,tt_followers,"
         f"list_type,tier,vertical,archetype,location,location_country,gender,email,"
         f"int_status,initial_rate,quoted_rate,outreach_usage,"
         f"outreach_status,outreach_owner,outreach_date,last_contact,outreach_notes,in_paid_plan")
     # Deduplicate by ig_handle — merge INT+EXT, exclude rejected-INT-only creators
+    MERGE_FIELDS = ("outreach_date", "last_contact", "outreach_status", "outreach_owner",
+                     "outreach_notes", "initial_rate", "quoted_rate")
     seen = {}
     for r in rows:
         key = (r.get("ig_handle") or r.get("name") or str(r["id"]))
@@ -440,6 +548,11 @@ async def get_outreach():
                 # Take the most permissive values from both records
                 if r.get("in_paid_plan"): seen[key]["in_paid_plan"] = True
                 if r.get("client_approved"): seen[key]["client_approved"] = True
+                # Backfill outreach fields from whichever duplicate actually has them — the two
+                # rows can diverge (e.g. a date saved before update_influencer's cross-sync ran)
+                for f in MERGE_FIELDS:
+                    if not seen[key].get(f) and r.get(f):
+                        seen[key][f] = r[f]
         else:
             if not is_rejected_int:
                 seen[key] = r

@@ -164,6 +164,13 @@
 
 <script>
 const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+// Escapes text, then turns pasted URLs into clickable links (for read-only display cells).
+const linkify = s => esc(s).replace(/(https?:\/\/[^\s<]+)/g, url => {
+  const m = url.match(/^(.*?)([).,;:!?\]"']*)$/);
+  const core = m ? m[1] : url;
+  const trail = m ? m[2] : "";
+  return `<a href="${core}" target="_blank" rel="noopener" style="color:var(--red)">${core}</a>${trail}`;
+});
 const fmt = n => n != null ? Number(n).toLocaleString() : "—";
 let allRows = [];
 
@@ -454,12 +461,12 @@ function renderContentReview() {
       <td style="font-size:11px">${esc(r.usage||"—")}</td>
       <td style="font-size:11px;white-space:nowrap">${fmtDate(r.content_due_date)}</td>
       <td style="font-size:11px;white-space:nowrap">${fmtDate(r.live_date)}</td>
-      <td style="font-size:11px;max-width:160px">${esc(r.concept||"—")}</td>
+      <td style="font-size:11px;max-width:160px">${linkify(r.concept||"—")}</td>
       <td style="font-size:11px">${r.content_v1 ? `<a href="${esc(r.content_v1)}" target="_blank">View ↗</a>` : "—"}</td>
-      <td style="font-size:11px;max-width:140px">${esc(r.caption_v1||"—")}</td>
+      <td style="font-size:11px;max-width:140px">${linkify(r.caption_v1||"—")}</td>
       <td><textarea class="cr-fb" data-id="${r.id}" data-field="client_feedback_v1" rows="2" style="${iS}" placeholder="Add feedback…">${esc(r.client_feedback_v1||"")}</textarea></td>
       <td style="font-size:11px">${r.content_v2 ? `<a href="${esc(r.content_v2)}" target="_blank">View ↗</a>` : "—"}</td>
-      <td style="font-size:11px;max-width:140px">${esc(r.caption_v2||"—")}</td>
+      <td style="font-size:11px;max-width:140px">${linkify(r.caption_v2||"—")}</td>
       <td><textarea class="cr-fb" data-id="${r.id}" data-field="client_feedback_v2" rows="2" style="${iS}" placeholder="Add feedback…">${esc(r.client_feedback_v2||"")}</textarea></td>
       <td style="font-size:11px">${esc(r.status||"—")}</td>
     </tr>`;

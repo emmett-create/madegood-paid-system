@@ -16,6 +16,9 @@ CLIENT = os.environ.get("PAID_CLIENT", "madegood")
 APP_PASSWORD    = os.environ.get("APP_PASSWORD", "a8paid123")
 CLIENT_PASSWORD = os.environ.get("CLIENT_PASSWORD", "client")
 
+# Anthropic API — used for screenshot-to-numbers extraction (Paid Plan impressions upload)
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+
 # Display name shown in the header
 CLIENT_NAME = os.environ.get("CLIENT_NAME", {
     "madegood":      "MadeGood",
