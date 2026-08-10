@@ -1189,8 +1189,8 @@ async function loadOutreach() {
     <td>${r.list_type==="INT/EXT"
         ? `<span class="badge badge-int">INT</span> <span class="badge badge-ext">EXT</span>`
         : `<span class="badge ${r.list_type==="INT"?"badge-int":"badge-ext"}">${esc(r.list_type)}</span>`}</td>
-    <td><input class="or-init-rate" data-id="${r.id}" value="${esc(r.initial_rate||"")}" placeholder="$" style="width:70px;${iS}"></td>
     <td><input class="or-quot-rate" data-id="${r.id}" value="${esc(r.quoted_rate||"")}" placeholder="$" style="width:70px;${iS}"></td>
+    <td><input type="number" class="or-landed-rate" data-id="${r.id}" value="${r.landed_rate!=null?r.landed_rate:""}" placeholder="$" title="Flows into Accepted Offer in Paid Plan" style="width:70px;${iS}"></td>
     <td>
       <div style="display:grid;grid-template-columns:auto 36px;gap:2px 4px;align-items:center;font-size:10px">
         <span style="color:var(--dim)">Feed</span><input type="number" class="or-del" data-id="${r.id}" data-field="ig_feed_qty" value="${plan.ig_feed_qty||0}" min="0" style="width:36px;${iS};padding:2px 4px">
@@ -1243,8 +1243,8 @@ async function loadOutreach() {
   document.querySelectorAll(".or-status-sel").forEach(s => s.addEventListener("change", () => saveField(s.dataset.id, "outreach_status", s.value)));
   document.querySelectorAll(".or-owner").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "outreach_owner", i.value.trim())));
   document.querySelectorAll(".or-email").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "email", i.value.trim())));
-  document.querySelectorAll(".or-init-rate").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "initial_rate", i.value.trim())));
   document.querySelectorAll(".or-quot-rate").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "quoted_rate", i.value.trim())));
+  document.querySelectorAll(".or-landed-rate").forEach(i => i.addEventListener("blur", () => saveField(i.dataset.id, "landed_rate", parseFloat(i.value) || null)));
   document.querySelectorAll(".or-configure").forEach(btn => btn.addEventListener("click", () => {
     const row = rows.find(r => String(r.id) === btn.dataset.id);
     if (!row) return;
@@ -1381,9 +1381,10 @@ async function loadPaidPlan() {
       <td>${fmtD(r.influencer_offer)}</td>
       <td>${fmtD(r.a8_counter)}</td>
       <td style="font-weight:600">${fmtD(r.accepted_offer)}</td>
-      <td class="pp-contract-col hidden">
-        <div style="font-size:11px;margin-bottom:3px">${esc(r.contract_name||"—")}</div>
-        <button class="btn-sec btn-pp-contract" data-idx="${i}" style="font-size:10px;padding:2px 8px">📄 ${r.contract_name ? "Edit" : "Upload"}</button>
+      <td class="pp-contract-col">
+        ${r.contract_link
+          ? `<a href="${esc(r.contract_link)}" target="_blank" style="color:var(--red)">📄 View ↗</a> <button class="btn-icon btn-pp-contract" data-idx="${i}" title="Edit link">✏</button>`
+          : `<button class="btn-sec btn-pp-contract" data-idx="${i}" style="font-size:10px;padding:2px 8px">+ Add Link</button>`}
       </td>
       <td style="white-space:nowrap">
         <button class="btn-icon btn-edit-pp" data-idx="${i}" title="Edit">✏</button>
@@ -1402,7 +1403,7 @@ async function loadPaidPlan() {
   document.querySelectorAll(".btn-pp-contract").forEach(b =>
     b.addEventListener("click", () => {
       const row = rows[parseInt(b.dataset.idx)];
-      if (row) openContractUpload(row);
+      if (row) openContractLinkModal(row);
     })
   );
 
@@ -1497,54 +1498,24 @@ function renderUsageByDeliverable(plan) {
   }).join("");
 }
 
-// ── Contract upload (Paid Plan) ────────────────────────────────────────────────
-// Currently hidden behind .pp-contract-col (not yet shown in the UI). Manual
-// entry, same pattern as Live Posts' screenshot upload — the PDF is shown for
-// reference only, not stored; you type the values in yourself.
-const CONTRACT_FIELDS = [
-  { key: "contract_name",         label: "Contract Name / Reference", type: "text"   },
-  { key: "contract_rate",         label: "Rate ($)",                  type: "number" },
-  { key: "contract_usage_start",  label: "Usage Term Start",          type: "date"   },
-  { key: "contract_usage_end",    label: "Usage Term End",            type: "date"   },
-];
-
-function openContractUpload(row) {
-  const inp = $("pp-contract-input");
-  if (!inp) return;
-  inp.value = "";
-  inp.onchange = () => {
-    const file = inp.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-      const fieldsHtml = CONTRACT_FIELDS.map(f => `
-        <div class="fld">
-          <label>${f.label}</label>
-          <input id="ct-${f.key}" type="${f.type}" value="${row[f.key]!=null?row[f.key]:""}" placeholder="Enter value…">
-        </div>`).join("");
-      openModal(`Upload Contract — ${esc(row.influencer?.name||"")}`, `
-        <embed src="${e.target.result}" type="application/pdf" style="width:100%;height:320px;border-radius:8px;margin-bottom:14px;border:1px solid var(--border)">
-        <div class="form-grid-2">${fieldsHtml}</div>
-      `, async () => {
-        const patch = {};
-        CONTRACT_FIELDS.forEach(f => {
-          const val = $(`ct-${f.key}`)?.value.trim();
-          if (val !== "") patch[f.key] = f.type === "number" ? (parseFloat(val)||null) : val;
-        });
-        if (row.id) {
-          await apiPatch(`/api/paid_plan/${row.id}`, patch);
-        } else {
-          const newPlan = await apiPost("/api/paid_plan", {influencer_id: row.influencer_id, ...patch});
-          if (newPlan?.id) row.id = newPlan.id;
-        }
-        Object.assign(row, patch);
-        closeModal();
-        loadPaidPlan();
-      });
-    };
-    reader.readAsDataURL(file);
-  };
-  inp.click();
+// ── Contract link (Paid Plan) ──────────────────────────────────────────────────
+// Just a plain link to the signed agreement (e.g. DocuSign) — no auto-fill, per the
+// call decision. Clicking "View" opens it in a new tab.
+function openContractLinkModal(row) {
+  openModal(`Contract Link — ${esc(row.influencer?.name||"")}`, `
+    <div class="fld"><label>Signed Agreement Link</label><input id="ct-link" type="url" value="${esc(row.contract_link||"")}" placeholder="https://…"></div>
+  `, async () => {
+    const link = $("ct-link")?.value.trim() || null;
+    if (row.id) {
+      await apiPatch(`/api/paid_plan/${row.id}`, {contract_link: link});
+    } else {
+      const newPlan = await apiPost("/api/paid_plan", {influencer_id: row.influencer_id, contract_link: link});
+      if (newPlan?.id) row.id = newPlan.id;
+    }
+    row.contract_link = link;
+    closeModal();
+    loadPaidPlan();
+  });
 }
 
 async function openPaidPlanModal(row) {

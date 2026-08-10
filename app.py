@@ -257,8 +257,8 @@ class InfluencerIn(BaseModel):
     int_status: Optional[str] = None
     client_approved: Optional[bool] = None
     client_notes: Optional[str] = None
-    initial_rate: Optional[str] = None
     quoted_rate: Optional[str] = None
+    landed_rate: Optional[float] = None
     outreach_usage: Optional[str] = None
     in_paid_plan: Optional[bool] = False
 
@@ -300,17 +300,26 @@ async def update_influencer(id: int, req: dict):
     # field saved on one duplicate silently "disappears" whenever get_outreach()'s dedup
     # happens to surface the other, stale duplicate on the next load.
     SYNC_FIELDS = ("campaign", "outreach_date", "last_contact", "outreach_status",
-                   "outreach_owner", "outreach_notes", "initial_rate", "quoted_rate")
+                   "outreach_owner", "outreach_notes", "quoted_rate", "landed_rate")
     sync_payload = {f: req[f] for f in SYNC_FIELDS if f in req}
     if sync_payload:
         try:
             inf_rec = await sb_get("paid_influencers", f"?id=eq.{id}&select=ig_handle")
             handle = (inf_rec[0].get("ig_handle") or "").strip() if inf_rec else ""
+            other_ids = []
             if handle:
                 others = await sb_get("paid_influencers",
                     f"?ig_handle=eq.{handle}&id=neq.{id}&select=id")
-                for o in others:
-                    await sb_patch("paid_influencers", o["id"], sync_payload)
+                other_ids = [o["id"] for o in others]
+                for oid in other_ids:
+                    await sb_patch("paid_influencers", oid, sync_payload)
+            # Landed Rate flows into Paid Plan's Accepted Offer — Outreach happens first,
+            # so this seeds/updates the final negotiated number on whatever plan record exists.
+            if sync_payload.get("landed_rate") is not None:
+                id_list = ",".join(str(i) for i in [id] + other_ids)
+                plans = await sb_get("paid_plan", f"?influencer_id=in.({id_list})&select=id")
+                for p in plans:
+                    await sb_patch("paid_plan", p["id"], {"accepted_offer": sync_payload["landed_rate"]})
         except Exception:
             pass
 
@@ -527,11 +536,11 @@ async def get_outreach():
         f"?client=eq.{current_client.get()}&order=name.asc,id.asc"
         f"&select=id,name,ig_handle,ig_url,tt_handle,tt_url,ig_followers,tt_followers,"
         f"list_type,tier,vertical,archetype,location,location_country,gender,email,"
-        f"int_status,initial_rate,quoted_rate,outreach_usage,"
+        f"int_status,quoted_rate,landed_rate,outreach_usage,"
         f"outreach_status,outreach_owner,outreach_date,last_contact,outreach_notes,in_paid_plan")
     # Deduplicate by ig_handle — merge INT+EXT, exclude rejected-INT-only creators
     MERGE_FIELDS = ("outreach_date", "last_contact", "outreach_status", "outreach_owner",
-                     "outreach_notes", "initial_rate", "quoted_rate")
+                     "outreach_notes", "quoted_rate", "landed_rate")
     seen = {}
     for r in rows:
         key = (r.get("ig_handle") or r.get("name") or str(r["id"]))

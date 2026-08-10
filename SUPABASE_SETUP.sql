@@ -221,3 +221,13 @@ create table if not exists public.campaigns (
 
 alter table public.campaigns enable row level security;
 create policy "Allow all" on public.campaigns for all to anon, authenticated using (true) with check (true);
+
+-- ── Landed Rate (2026-08-10) ───────────────────────────────────────────────────
+-- Captured in Outreach once a deal closes; flows into Paid Plan's Accepted Offer
+-- automatically since Outreach happens first, before a Paid Plan record may exist yet.
+alter table public.paid_influencers add column if not exists landed_rate numeric;
+
+-- ── Contract link (2026-08-10) ─────────────────────────────────────────────────
+-- Plain link to the signed agreement (e.g. DocuSign) per creator in Paid Plan —
+-- decided on the call to keep this a link field, not DocuSign auto-fill.
+alter table public.paid_plan add column if not exists contract_link text;
