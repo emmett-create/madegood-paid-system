@@ -2465,6 +2465,26 @@ const LP_SCREENSHOT_FIELDS = {
     {key:"avg_watch_time",   label:"Avg Watch Time",      type:"text"},
     {key:"accounts_reached", label:"Accounts Reached",   type:"number"},
   ],
+  feed: [
+    {key:"likes",            label:"Likes",               type:"number"},
+    {key:"comments",         label:"Comments",            type:"number"},
+    {key:"shares",           label:"Shares",              type:"number"},
+    {key:"saves",            label:"Saves",               type:"number"},
+    {key:"reposts",          label:"Reposts",             type:"number"},
+    {key:"total_views",      label:"Views",               type:"number"},
+    {key:"reach",            label:"Reach",               type:"number"},
+    {key:"total_watch_time", label:"Total Watch Time",    type:"text"},
+    {key:"interactions",     label:"Interactions",        type:"number"},
+    {key:"avg_watch_time",   label:"Avg Watch Time",      type:"text"},
+    {key:"accounts_reached", label:"Accounts Reached",   type:"number"},
+  ],
+  story: [
+    {key:"total_views",      label:"Views",               type:"number"},
+    {key:"likes",            label:"Likes",               type:"number"},
+    {key:"comments",         label:"Comments",            type:"number"},
+    {key:"shares",           label:"Shares",              type:"number"},
+    {key:"saves",            label:"Saves",               type:"number"},
+  ],
 };
 
 function lpCalc(r) {
@@ -2605,11 +2625,14 @@ async function loadLivePosts() {
 }
 
 function openScreenshotUpload(postId, deliverableType) {
-  const typeKey = deliverableType.toLowerCase().includes("tiktok") ? "tiktok"
-                : deliverableType.toLowerCase().includes("reel")   ? "reel"
+  const dt = (deliverableType || "").toLowerCase();
+  const typeKey = dt.includes("tiktok") ? "tiktok"
+                : dt.includes("reel")   ? "reel"
+                : dt.includes("story")  ? "story"
+                : dt.includes("feed")   ? "feed"
                 : null;
   const fields = typeKey ? LP_SCREENSHOT_FIELDS[typeKey] : null;
-  if (!fields) { alert("Screenshot upload is available for TikTok and IG Reel posts."); return; }
+  if (!fields) { alert("Screenshot upload isn't set up for this deliverable type yet."); return; }
 
   const inp = $("lp-screenshot-input");
   inp.value = "";
