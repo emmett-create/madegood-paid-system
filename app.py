@@ -57,6 +57,21 @@ def get_anthropic_client() -> Anthropic:
         _anthropic_client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
     return _anthropic_client
 
+# TEMPORARY — remove once the ANTHROPIC_API_KEY env var issue is confirmed fixed.
+# Reports presence/shape only; never returns the actual key value.
+@app.get("/api/debug/anthropic_key_status")
+def anthropic_key_status():
+    key = config.ANTHROPIC_API_KEY
+    if not key:
+        return {"present": False}
+    return {
+        "present": True,
+        "length": len(key),
+        "starts_with": key[:8],
+        "ends_with": key[-4:],
+        "has_whitespace": key != key.strip(),
+    }
+
 # ── Supabase helpers ──────────────────────────────────────────────────────────
 def sb_headers():
     return {
