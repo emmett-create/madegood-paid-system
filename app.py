@@ -58,6 +58,12 @@ def get_anthropic_client() -> Anthropic:
     return _anthropic_client
 
 # TEMPORARY — remove once the ANTHROPIC_API_KEY env var issue is confirmed fixed.
+# Reports env var NAMES only (never values) — shows everything Render actually
+# injected into this running process, to compare against what's set in the dashboard.
+@app.get("/api/debug/env_keys")
+def env_keys():
+    return {"keys": sorted(os.environ.keys())}
+
 # Reports presence/shape only; never returns the actual key value.
 @app.get("/api/debug/anthropic_key_status")
 def anthropic_key_status():
