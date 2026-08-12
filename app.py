@@ -314,26 +314,39 @@ async def add_influencer(req: InfluencerIn):
 @app.patch("/api/influencers/{id}")
 async def update_influencer(id: int, req: dict):
     check_auth(req.pop("password", None))
+
+    # Capture the handle BEFORE this edit lands. If ig_handle itself is one of the fields
+    # being changed, duplicate rows (INT/EXT) still carry the OLD value at this point — matching
+    # against the new value would find nothing, silently skipping the sync below entirely.
+    old_handle = ""
+    try:
+        inf_rec = await sb_get("paid_influencers", f"?id=eq.{id}&select=ig_handle")
+        old_handle = (inf_rec[0].get("ig_handle") or "").strip() if inf_rec else ""
+    except Exception:
+        pass
+
     result = await sb_patch("paid_influencers", id, req)
 
     # Sync shared fields across all records with the same ig_handle. Creators copied to the
     # external list live as a SEPARATE row (see "Copy to External"); without this sync, a
     # field saved on one duplicate silently "disappears" whenever get_outreach()'s dedup
-    # happens to surface the other, stale duplicate on the next load.
-    SYNC_FIELDS = ("campaign", "outreach_date", "last_contact", "outreach_status",
+    # happens to surface the other, stale duplicate on the next load. Internal is the source
+    # of truth, but this runs symmetrically — editing either duplicate propagates to the other.
+    SYNC_FIELDS = ("name", "ig_handle", "ig_url", "tt_handle", "tt_url",
+                   "ig_followers", "tt_followers", "total_followers",
+                   "tier", "vertical", "archetype", "location", "location_country",
+                   "gender", "email", "review_notes",
+                   "campaign", "outreach_date", "last_contact", "outreach_status",
                    "outreach_owner", "outreach_notes", "quoted_rate", "landed_rate")
     sync_payload = {f: req[f] for f in SYNC_FIELDS if f in req}
-    if sync_payload:
+    other_ids = []
+    if sync_payload and old_handle:
         try:
-            inf_rec = await sb_get("paid_influencers", f"?id=eq.{id}&select=ig_handle")
-            handle = (inf_rec[0].get("ig_handle") or "").strip() if inf_rec else ""
-            other_ids = []
-            if handle:
-                others = await sb_get("paid_influencers",
-                    f"?ig_handle=eq.{handle}&id=neq.{id}&select=id")
-                other_ids = [o["id"] for o in others]
-                for oid in other_ids:
-                    await sb_patch("paid_influencers", oid, sync_payload)
+            others = await sb_get("paid_influencers",
+                f"?ig_handle=eq.{old_handle}&id=neq.{id}&select=id")
+            other_ids = [o["id"] for o in others]
+            for oid in other_ids:
+                await sb_patch("paid_influencers", oid, sync_payload)
             # Landed Rate flows into Paid Plan's Accepted Offer — Outreach happens first,
             # so this seeds/updates the final negotiated number on whatever plan record exists.
             if sync_payload.get("landed_rate") is not None:
@@ -346,20 +359,16 @@ async def update_influencer(id: int, req: dict):
 
     # When setting in_paid_plan=True, migrate any existing plan records from the
     # matching INT influencer to this EXT influencer so Paid Plan can find them directly
-    if req.get("in_paid_plan") is True:
+    if req.get("in_paid_plan") is True and old_handle:
         try:
-            inf_rec = await sb_get("paid_influencers", f"?id=eq.{id}&select=ig_handle")
-            if inf_rec:
-                handle = (inf_rec[0].get("ig_handle") or "").strip()
-                if handle:
-                    all_with_handle = await sb_get("paid_influencers",
-                        f"?ig_handle=eq.{handle}&select=id")
-                    other_ids = [str(i["id"]) for i in all_with_handle if i["id"] != id]
-                    if other_ids:
-                        other_plans = await sb_get("paid_plan",
-                            f"?influencer_id=in.({',' .join(other_ids)})")
-                        for p in other_plans:
-                            await sb_patch("paid_plan", p["id"], {"influencer_id": id})
+            all_with_handle = await sb_get("paid_influencers",
+                f"?ig_handle=eq.{old_handle}&select=id")
+            plan_other_ids = [str(i["id"]) for i in all_with_handle if i["id"] != id]
+            if plan_other_ids:
+                other_plans = await sb_get("paid_plan",
+                    f"?influencer_id=in.({',' .join(plan_other_ids)})")
+                for p in other_plans:
+                    await sb_patch("paid_plan", p["id"], {"influencer_id": id})
         except Exception:
             pass  # non-critical — Paid Plan handle-fallback still works
 
