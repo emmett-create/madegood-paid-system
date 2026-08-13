@@ -20,7 +20,7 @@ app = FastAPI(title="Agency 8 Paid System")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── Multi-tenant client context ───────────────────────────────────────────────
-VALID_CLIENTS = {"madegood", "magna", "evolvetogether", "stardust"}
+VALID_CLIENTS = {"madegood", "magna", "evolvetogether", "stardust", "tacbrand", "tacgrowth"}
 current_client: ContextVar[str] = ContextVar("current_client", default=config.CLIENT)
 
 class ClientContextMiddleware(BaseHTTPMiddleware):
@@ -1004,6 +1004,8 @@ ARCHIVE_WORKSPACES = {
     "magna":          "1a9f4270-c1c5-4dde-bcfa-3040589e9184",
     "evolvetogether": "c8493a78-3eb0-4bad-9567-70dc2dc76e98",
     "stardust":       "d7413c10-4ac9-4a69-b7a6-0e0babaad8a1",
+    "tacbrand":       "77b77ba7-db31-44d2-819d-cc710cb89289",
+    "tacgrowth":      "77b77ba7-db31-44d2-819d-cc710cb89289",
 }
 
 async def archive_query(query: str, variables: dict) -> dict:
@@ -1263,12 +1265,16 @@ CLIENT_NAMES = {
     "magna":          "Magna",
     "evolvetogether": "EvolveTogether",
     "stardust":       "Stardust",
+    "tacbrand":       "The Absorption Company (Brand)",
+    "tacgrowth":      "The Absorption Company (Growth)",
 }
 BUDGET_URLS = {
     "madegood":       "https://emmett-create.github.io/madegood-budget-tracker/",
     "evolvetogether": "https://emmett-create.github.io/evolvetogether-budget-tracker/",
     "magna":          "",
     "stardust":       "https://emmett-create.github.io/stardust-budget-tracker/",
+    "tacbrand":       "",
+    "tacgrowth":      "",
 }
 
 @app.get("/api/app_config")
@@ -1288,6 +1294,8 @@ def hub():
 @app.get("/magna")
 @app.get("/evolvetogether")
 @app.get("/stardust")
+@app.get("/tacbrand")
+@app.get("/tacgrowth")
 def client_app():
     return FileResponse(os.path.join(STATIC, "index.html"))
 

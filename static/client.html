@@ -176,7 +176,7 @@ let allRows = [];
 
 // Read client from URL path (e.g. /magna/client → "magna")
 const _clParts = window.location.pathname.split("/").filter(Boolean);
-const CLIENT_CTX = ["madegood","magna","evolvetogether","stardust"].includes(_clParts[0]) ? _clParts[0] : "madegood";
+const CLIENT_CTX = ["madegood","magna","evolvetogether","stardust","tacbrand","tacgrowth"].includes(_clParts[0]) ? _clParts[0] : "madegood";
 const _ctx = p => p + (p.includes("?") ? "&" : "?") + "ctx=" + CLIENT_CTX;
 
 // Load client name for branding (page is shared across all 3 clients)
