@@ -1571,7 +1571,7 @@ async function openPaidPlanModal(row) {
         </select>
       </div>
     </div>
-    <div class="form-section">CPM Rates (benchmark defaults pre-filled)</div>
+    <div class="form-section">CPV Rates (benchmark defaults pre-filled)</div>
     <div class="form-grid-3">
       <div class="fld"><label>IG Reel CPV ($)</label><input type="number" step="0.01" id="ppf-reel-cpv" value="${d(e.ig_reel_cpv, 0.14)}"></div>
       <div class="fld"><label>IG Story CPV ($)</label><input type="number" step="0.01" id="ppf-story-cpv" value="${d(e.ig_story_cpv, 0.14)}"></div>
@@ -1594,7 +1594,7 @@ async function openPaidPlanModal(row) {
       <div style="display:flex;justify-content:space-between"><span style="color:var(--dim)">IG Story</span><strong id="ppf-c-igs">—</strong></div>
       <div style="display:flex;justify-content:space-between"><span style="color:var(--dim)">IG In-Feed</span><strong id="ppf-c-igf">—</strong></div>
       <div style="display:flex;justify-content:space-between"><span style="color:var(--dim)">TikTok</span><strong id="ppf-c-tt">—</strong></div>
-      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px;padding-top:6px"><span style="color:var(--dim)">Base CPM Cost</span><strong id="ppf-c-base">—</strong></div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px;padding-top:6px"><span style="color:var(--dim)">Base CPV Cost</span><strong id="ppf-c-base">—</strong></div>
       <div style="display:flex;justify-content:space-between"><span style="color:var(--dim)">+ Organic Usage</span><strong id="ppf-c-org">—</strong></div>
       <div style="display:flex;justify-content:space-between"><span style="color:var(--dim)">+ Paid Usage</span><strong id="ppf-c-paid">—</strong></div>
       <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-size:14px"><span style="font-weight:700">Total Est. Cost</span><strong style="color:var(--red);font-size:18px" id="ppf-c-total">—</strong></div>
@@ -2024,60 +2024,6 @@ function ppDeliverableSummary(plan) {
 }
 const CR_STATUSES  = ["New! Needs Client Review", "Client Reviewed: Approved", "Client Reviewed: Needs Edits"];
 
-// Sync a content_review record's dates to the Content Calendar
-async function syncCalendarEntry(crId, infId, delType, liveDate, dueDate, approved, isCollab = false) {
-  if (!calRows.length) {
-    try { calRows = await apiGet("/api/content_calendar"); } catch {}
-  }
-  const delQty = {
-    ig_feed:  (delType||"").includes("Feed") ? 1 : 0,
-    ig_reel:  (delType||"").includes("Reel")    ? 1 : 0,
-    ig_story: (delType||"").includes("Story")   ? 1 : 0,
-    tiktok:   (delType||"").includes("TikTok")  ? 1 : 0,
-  };
-  const noteKey = id => `cr:${id}`;
-
-  // Sync live date entry
-  const liveEntry = calRows.find(c => c.content_review_id === crId && (c.notes||"").includes("type:live"));
-  if (liveDate) {
-    if (liveEntry) {
-      await apiPatch(`/api/content_calendar/${liveEntry.id}`, {scheduled_date: liveDate, approved, collab: isCollab});
-    } else {
-      await apiPost("/api/content_calendar", {
-        influencer_id:    infId,
-        scheduled_date:   liveDate,
-        deliverable:      JSON.stringify(delQty),
-        notes:            `${noteKey(crId)}|type:live`,
-        content_review_id: crId,
-        approved,
-        collab: isCollab,
-      });
-    }
-  }
-
-  // Sync content due date entry (blue)
-  const dueEntry = calRows.find(c => c.content_review_id === crId && (c.notes||"").includes("type:due"));
-  if (dueDate) {
-    if (dueEntry) {
-      await apiPatch(`/api/content_calendar/${dueEntry.id}`, {scheduled_date: dueDate});
-    } else {
-      await apiPost("/api/content_calendar", {
-        influencer_id:    infId,
-        scheduled_date:   dueDate,
-        deliverable:      JSON.stringify(delQty),
-        notes:            `${noteKey(crId)}|type:due`,
-        content_review_id: crId,
-        approved: false,
-        collab: false,
-      });
-    }
-  }
-
-  // Refresh calendar rows so next sync is accurate
-  try { calRows = await apiGet("/api/content_calendar"); } catch {}
-  if (currentTab === "content-cal") renderCalendar();
-}
-
 const crExpandedGroups = new Set(); // persists across tab switches
 
 window.toggleCRGroup = (groupKey, parentTr) => {
@@ -2285,19 +2231,15 @@ async function loadContentReview() {
       el.addEventListener(evt, () => apiPatch(`/api/content_review/${el.dataset.id}`, {[field]: el.value || null}))
     );
   wire("cr-status",      "status",            "change");
-  // Due + live date wires — also sync to calendar
+  // Due + live date wires — Content Calendar reads these fields directly, no sync needed
   document.querySelectorAll(".cr-due").forEach(el =>
     el.addEventListener("change", async () => {
       await apiPatch(`/api/content_review/${el.dataset.id}`, {content_due_date: el.value || null});
-      const r = rows.find(x => String(x.id) === el.dataset.id);
-      if (r) syncCalendarEntry(r.id, r.influencer_id, r.deliverable_type, r.live_date, el.value, r.approved_by_client, r.is_collab);
     })
   );
   document.querySelectorAll(".cr-live").forEach(el =>
     el.addEventListener("change", async () => {
       await apiPatch(`/api/content_review/${el.dataset.id}`, {live_date: el.value || null});
-      const r = rows.find(x => String(x.id) === el.dataset.id);
-      if (r) syncCalendarEntry(r.id, r.influencer_id, r.deliverable_type, el.value, r.content_due_date, r.approved_by_client, r.is_collab);
     })
   );
   wire("cr-concept",     "concept",          "blur");
@@ -2311,25 +2253,10 @@ async function loadContentReview() {
   wire("cr-af2",         "a8_feedback_v2",   "blur");
   wire("cr-cf2",         "client_feedback_v2","blur");
 
-  // Approved checkbox → patch + sync calendar entry to approved/pending
+  // Approved checkbox — Content Calendar reads approved_by_client directly, no sync needed
   document.querySelectorAll(".cr-approved-chk").forEach(cb =>
     cb.addEventListener("change", async () => {
-      const r = rows.find(x => String(x.id) === cb.dataset.id);
       await apiPatch(`/api/content_review/${cb.dataset.id}`, {approved_by_client: cb.checked});
-      if (cb.checked) {
-        // Approved → sync calendar entries
-        if (r) syncCalendarEntry(r.id, r.influencer_id, r.deliverable_type, cb.dataset.live, cb.dataset.due, true, r.is_collab);
-      } else {
-        // Unapproved → delete linked calendar entries
-        const crId = parseInt(cb.dataset.id);
-        if (!calRows.length) { try { calRows = await apiGet("/api/content_calendar"); } catch {} }
-        const toDelete = calRows.filter(c => c.content_review_id === crId);
-        for (const cal of toDelete) {
-          await fetch(`/api/content_calendar/${cal.id}?password=${encodeURIComponent(PW)}`, {method:"DELETE"});
-        }
-        calRows = calRows.filter(c => c.content_review_id !== crId);
-        if (currentTab === "content-cal") renderCalendar();
-      }
     })
   );
 

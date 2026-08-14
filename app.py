@@ -919,6 +919,21 @@ async def update_live_post(id: int, req: dict):
     check_auth(req.pop("password", None))
     return await sb_patch("live_posts", id, req)
 
+@app.delete("/api/live_posts/{id}")
+async def delete_live_post(id: int, password: str = ""):
+    check_auth(password)
+    rows = await sb_get("live_posts", f"?id=eq.{id}&select=live_link")
+    live_link = (rows[0].get("live_link") if rows else "") or ""
+    live_link = live_link.rstrip("/")
+    if live_link:
+        already = await sb_get("live_posts_excluded",
+            f"?client=eq.{current_client.get()}&live_link=eq.{live_link}")
+        if not already:
+            await sb_post("live_posts_excluded",
+                {"client": current_client.get(), "live_link": live_link})
+    await sb_delete("live_posts", id)
+    return {"ok": True}
+
 # ── Gifted Licensing ─────────────────────────────────────────────────────────
 @app.get("/api/gifted_licensing")
 async def get_gifted_licensing():
@@ -1165,6 +1180,10 @@ async def archive_sync(req: dict):
     existing_urls = {(lp.get("live_link") or "").rstrip("/") for lp in live_posts if lp.get("live_link")}
     lp_by_url = {(lp.get("live_link") or "").rstrip("/"): lp for lp in live_posts if lp.get("live_link")}
 
+    # URLs the user explicitly deleted — never re-create these from a sync
+    excluded_rows = await sb_get("live_posts_excluded", f"?client=eq.{current_client.get()}")
+    excluded_urls = {(e.get("live_link") or "").rstrip("/") for e in excluded_rows if e.get("live_link")}
+
     synced = 0
     created = 0
     for post in all_posts:
@@ -1192,6 +1211,8 @@ async def archive_sync(req: dict):
         if url in lp_by_url:
             await sb_patch("live_posts", lp_by_url[url]["id"], metrics)
             synced += 1
+        elif url in excluded_urls:
+            continue
         elif url not in existing_urls:
             plan          = plan_map.get(creator["id"], {})
             final_rate    = plan.get("accepted_offer")
