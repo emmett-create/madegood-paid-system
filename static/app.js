@@ -2531,7 +2531,13 @@ function renderLivePosts() {
     b.addEventListener("click",()=>{ const row=lpData.find(r=>String(r.id)===b.dataset.id); if(row) openLivePostModal(row); })
   );
   document.querySelectorAll(".btn-del-lp").forEach(b=>
-    b.addEventListener("click",async()=>{ if(!confirm("Delete?")) return; await apiDelete(`/api/live_posts/${b.dataset.id}?password=${encodeURIComponent(PW)}`); loadLivePosts(); })
+    b.addEventListener("click",()=>{
+      openDeleteChoiceModal(
+        "Delete this live post. Should it be allowed to come back the next time you sync?",
+        async()=>{ await apiDelete(`/api/live_posts/${b.dataset.id}?password=${encodeURIComponent(PW)}`); loadLivePosts(); },
+        async()=>{ await apiDelete(`/api/live_posts/${b.dataset.id}?password=${encodeURIComponent(PW)}&permanent=true`); loadLivePosts(); }
+      );
+    })
   );
   document.querySelectorAll(".lp-upload-btn").forEach(b=>
     b.addEventListener("click",()=>{ openScreenshotUpload(b.dataset.id, b.dataset.type); })
@@ -3016,6 +3022,25 @@ function openModal(title, bodyHtml, onSubmit) {
   ov.classList.remove("hidden");
   document.getElementById("modal-close").onclick = closeModal;
   modalSubmitFn = onSubmit;
+}
+
+// Delete-choice variant — asks whether the deletion should stick through the next sync
+function openDeleteChoiceModal(message, onTemporary, onPermanent) {
+  document.getElementById("modal-title").textContent = "Delete Live Post";
+  document.getElementById("modal-body").innerHTML = `<p style="margin:0 0 16px">${esc(message)}</p>
+    <div class="modal-footer">
+      <button class="btn-sec" id="modal-cancel">Cancel</button>
+      <button class="btn-sec" id="modal-temp">Delete Temporarily</button>
+      <button class="btn-pri" id="modal-perm">Delete Permanently</button>
+    </div>`;
+  var ov = document.getElementById("modal-overlay");
+  ov.style.display = "flex";
+  ov.classList.remove("hidden");
+  document.getElementById("modal-close").onclick = closeModal;
+  document.getElementById("modal-cancel").onclick = closeModal;
+  document.getElementById("modal-temp").onclick = async()=>{ closeModal(); await onTemporary(); };
+  document.getElementById("modal-perm").onclick = async()=>{ closeModal(); await onPermanent(); };
+  modalSubmitFn = null;
 }
 
 // Read-only variant — single "Close" button, no Save (nothing to submit)

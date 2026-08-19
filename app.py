@@ -920,17 +920,18 @@ async def update_live_post(id: int, req: dict):
     return await sb_patch("live_posts", id, req)
 
 @app.delete("/api/live_posts/{id}")
-async def delete_live_post(id: int, password: str = ""):
+async def delete_live_post(id: int, password: str = "", permanent: bool = False):
     check_auth(password)
-    rows = await sb_get("live_posts", f"?id=eq.{id}&select=live_link")
-    live_link = (rows[0].get("live_link") if rows else "") or ""
-    live_link = live_link.rstrip("/")
-    if live_link:
-        already = await sb_get("live_posts_excluded",
-            f"?client=eq.{current_client.get()}&live_link=eq.{live_link}")
-        if not already:
-            await sb_post("live_posts_excluded",
-                {"client": current_client.get(), "live_link": live_link})
+    if permanent:
+        rows = await sb_get("live_posts", f"?id=eq.{id}&select=live_link")
+        live_link = (rows[0].get("live_link") if rows else "") or ""
+        live_link = live_link.rstrip("/")
+        if live_link:
+            already = await sb_get("live_posts_excluded",
+                f"?client=eq.{current_client.get()}&live_link=eq.{live_link}")
+            if not already:
+                await sb_post("live_posts_excluded",
+                    {"client": current_client.get(), "live_link": live_link})
     await sb_delete("live_posts", id)
     return {"ok": True}
 
