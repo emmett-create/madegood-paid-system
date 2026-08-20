@@ -20,7 +20,7 @@ app = FastAPI(title="Agency 8 Paid System")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── Multi-tenant client context ───────────────────────────────────────────────
-VALID_CLIENTS = {"madegood", "magna", "evolvetogether", "stardust", "tacbrand", "tacgrowth"}
+VALID_CLIENTS = {"madegood", "magna", "evolvetogether", "stardust", "sys", "tacbrand", "tacgrowth"}
 current_client: ContextVar[str] = ContextVar("current_client", default=config.CLIENT)
 
 class ClientContextMiddleware(BaseHTTPMiddleware):
@@ -1020,6 +1020,7 @@ ARCHIVE_WORKSPACES = {
     "magna":          "1a9f4270-c1c5-4dde-bcfa-3040589e9184",
     "evolvetogether": "c8493a78-3eb0-4bad-9567-70dc2dc76e98",
     "stardust":       "d7413c10-4ac9-4a69-b7a6-0e0babaad8a1",
+    "sys":            "c522e827-edc6-4314-8737-919b19829e0b",
     "tacbrand":       "77b77ba7-db31-44d2-819d-cc710cb89289",
     "tacgrowth":      "77b77ba7-db31-44d2-819d-cc710cb89289",
 }
@@ -1287,6 +1288,7 @@ CLIENT_NAMES = {
     "magna":          "Magna",
     "evolvetogether": "EvolveTogether",
     "stardust":       "Stardust",
+    "sys":            "SYS",
     "tacbrand":       "The Absorption Company (Brand)",
     "tacgrowth":      "The Absorption Company (Growth)",
 }
@@ -1295,6 +1297,7 @@ BUDGET_URLS = {
     "evolvetogether": "https://emmett-create.github.io/evolvetogether-budget-tracker/",
     "magna":          "",
     "stardust":       "https://emmett-create.github.io/stardust-budget-tracker/",
+    "sys":            "https://emmett-create.github.io/sys-budget-tracker/",
     "tacbrand":       "",
     "tacgrowth":      "",
 }
