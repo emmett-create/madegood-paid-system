@@ -1319,6 +1319,7 @@ def hub():
 @app.get("/magna")
 @app.get("/evolvetogether")
 @app.get("/stardust")
+@app.get("/sys")
 @app.get("/tacbrand")
 @app.get("/tacgrowth")
 def client_app():
