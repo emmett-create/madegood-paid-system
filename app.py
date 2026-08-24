@@ -1329,6 +1329,9 @@ def client_app():
 @app.get("/magna/client")
 @app.get("/evolvetogether/client")
 @app.get("/stardust/client")
+@app.get("/sys/client")
+@app.get("/tacbrand/client")
+@app.get("/tacgrowth/client")
 def client_view():
     return FileResponse(os.path.join(STATIC, "client.html"))
 

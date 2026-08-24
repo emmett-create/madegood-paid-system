@@ -34,7 +34,7 @@ $("gate-btn").addEventListener("click", async () => {
 $("gate-pw").addEventListener("keydown", e => { if (e.key === "Enter") $("gate-btn").click(); });
 
 // ── Client context (read from URL path) ──────────────────────────────────────
-const _VALID_CLIENTS = ["madegood", "magna", "evolvetogether", "stardust", "tacbrand", "tacgrowth"];
+const _VALID_CLIENTS = ["madegood", "magna", "evolvetogether", "stardust", "sys", "tacbrand", "tacgrowth"];
 const _pathClient = window.location.pathname.split("/").filter(Boolean)[0] || "";
 const CLIENT_CTX = _VALID_CLIENTS.includes(_pathClient) ? _pathClient : "madegood";
 
@@ -1277,9 +1277,10 @@ function calcCpvCosts(r, variant = "standard") {
   const ttLow  = variant === "low",  ttHigh  = variant === "high";
   const igMult = igLow ? IG_CPV_LOW : igHigh ? IG_CPV_HIGH : 1;
   const ttMult = ttLow ? TT_CPV_LOW : ttHigh ? TT_CPV_HIGH : 1;
-  const feed  = (r.ig_feed_qty||0)  * ig    * (r.ig_feed_cpv||0)  * igMult;
-  const reel  = (r.ig_reel_qty||0)  * ig    * (r.ig_reel_cpv||0)  * igMult;
-  const story = (r.ig_story_qty||0) * ig    * (r.ig_story_cpv||0) * igMult;
+  const storyImp = r.ig_stories_impressions || 0;
+  const feed  = (r.ig_feed_qty||0)  * ig       * (r.ig_feed_cpv||0)  * igMult;
+  const reel  = (r.ig_reel_qty||0)  * ig       * (r.ig_reel_cpv||0)  * igMult;
+  const story = (r.ig_story_qty||0) * storyImp * (r.ig_story_cpv||0) * igMult;
   const tt    = (r.tt_qty||0)       * ttImp * (r.tt_cpv||0)       * ttMult;
   const base  = feed + reel + story + tt;
   const org   = base * (r.organic_pct||0) / 100;
@@ -1544,8 +1545,9 @@ async function openPaidPlanModal(row) {
       <span>Impressions</span>
       <button type="button" class="btn-sec" id="ppf-imp-upload-btn" style="font-size:11px;padding:4px 10px">📷 Upload Screenshot</button>
     </div>
-    <div class="form-grid-2">
-      <div class="fld"><label>IG Avg Impressions</label><input type="number" id="ppf-ig-imp" value="${e.ig_impressions||e.ig_reels_impressions||""}"></div>
+    <div class="form-grid-3">
+      <div class="fld"><label>IG Feed/Reel Avg Impressions</label><input type="number" id="ppf-ig-imp" value="${e.ig_impressions||e.ig_reels_impressions||""}"></div>
+      <div class="fld"><label>IG Story Avg Impressions</label><input type="number" id="ppf-story-imp" value="${e.ig_stories_impressions||""}"></div>
       <div class="fld"><label>TikTok Avg Impressions</label><input type="number" id="ppf-tt-imp" value="${e.tt_impressions||""}"></div>
     </div>
     <div class="form-section">Deliverables</div>
@@ -1607,6 +1609,7 @@ async function openPaidPlanModal(row) {
       status:               $("ppf-status").value,
       usage:                $("ppf-usage").value,
       ig_reels_impressions: igImp,
+      ig_stories_impressions: n("ppf-story-imp"),
       tt_impressions:       n("ppf-tt-imp"),
       ig_feed_qty:          n("ppf-feed-qty") || 0,
       ig_reel_qty:          n("ppf-reel-qty") || 0,
@@ -1663,9 +1666,10 @@ async function openPaidPlanModal(row) {
     const updateCalc = () => {
       const nv = id => parseFloat($(id)?.value) || 0;
       const igImp   = nv("ppf-ig-imp");
-      const igFeed  = nv("ppf-feed-qty")  * igImp * nv("ppf-feed-cpv");
-      const igReel  = nv("ppf-reel-qty")  * igImp * nv("ppf-reel-cpv");
-      const igStory = nv("ppf-story-qty") * igImp * nv("ppf-story-cpv");
+      const storyImp = nv("ppf-story-imp");
+      const igFeed  = nv("ppf-feed-qty")  * igImp    * nv("ppf-feed-cpv");
+      const igReel  = nv("ppf-reel-qty")  * igImp    * nv("ppf-reel-cpv");
+      const igStory = nv("ppf-story-qty") * storyImp * nv("ppf-story-cpv");
       const tt      = nv("ppf-tt-qty")    * nv("ppf-tt-imp") * nv("ppf-tt-cpv");
       const base    = igFeed + igReel + igStory + tt;
       const org     = base * nv("ppf-org-pct") / 100;
@@ -1680,7 +1684,7 @@ async function openPaidPlanModal(row) {
       $("ppf-c-paid").textContent = fD(paid);
       $("ppf-c-total").textContent = fD(total);
     };
-    ["ppf-ig-imp","ppf-tt-imp",
+    ["ppf-ig-imp","ppf-story-imp","ppf-tt-imp",
      "ppf-feed-qty","ppf-reel-qty","ppf-story-qty","ppf-tt-qty",
      "ppf-reel-cpv","ppf-story-cpv","ppf-feed-cpv","ppf-tt-cpv",
      "ppf-org-pct","ppf-paid-pct"].forEach(id => $(id)?.addEventListener("input", updateCalc));
