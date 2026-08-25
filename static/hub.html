@@ -16,19 +16,35 @@
     .gate-sub { color:var(--dim); font-size:13px; }
     .gate-err { color:var(--red); font-size:12px; }
     .hidden { display:none!important; }
-    input[type=password] { background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:9px 14px; font-size:13px; width:100%; }
+    input[type=password], input[type=text], input[type=url] { background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:9px 14px; font-size:13px; width:100%; font-family:inherit; }
     .btn { background:var(--red); color:#fff; border:none; border-radius:8px; padding:10px 18px; font-size:13px; font-weight:600; cursor:pointer; width:100%; }
     .btn:hover { filter:brightness(1.1); }
+    .btn-sec { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px 18px; font-size:13px; font-weight:600; cursor:pointer; }
+    .btn-sec:hover { border-color:var(--dim); }
     .main { flex:1; padding:48px 24px; max-width:900px; margin:0 auto; width:100%; }
+    .main-top { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:36px; }
     h1 { font-size:22px; font-weight:700; margin-bottom:6px; }
-    .sub { color:var(--dim); font-size:13px; margin-bottom:36px; }
+    .sub { color:var(--dim); font-size:13px; }
     .clients { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:20px; }
     .client-card { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:28px 24px; cursor:pointer; text-decoration:none; color:var(--text); display:flex; flex-direction:column; gap:8px; transition:box-shadow .15s, transform .15s; }
     .client-card:hover { box-shadow:0 4px 20px rgba(202,1,0,.12); transform:translateY(-2px); border-color:var(--red); }
     .client-card .name { font-size:18px; font-weight:700; }
     .client-card .desc { font-size:12px; color:var(--dim); }
     .client-card .arrow { font-size:20px; color:var(--red); margin-top:8px; }
-    .dot { width:8px; height:8px; border-radius:50%; background:#1a7a1a; display:inline-block; margin-right:6px; }
+    .client-card.add-card { border-style:dashed; align-items:center; justify-content:center; text-align:center; color:var(--dim); }
+    .client-card.add-card:hover { color:var(--red); }
+    .client-card.add-card .plus { font-size:28px; line-height:1; margin-bottom:4px; }
+    .loading-note { color:var(--dim); font-size:13px; }
+    .modal-overlay { position:fixed; inset:0; background:rgba(26,0,0,.45); display:flex; align-items:center; justify-content:center; z-index:200; }
+    .modal-box { background:var(--panel); border-radius:16px; padding:32px; width:380px; display:flex; flex-direction:column; gap:14px; box-shadow:0 8px 32px rgba(26,0,0,.2); }
+    .modal-box h2 { font-size:17px; font-weight:700; }
+    .modal-box .fld label { display:block; font-size:11px; font-weight:600; color:var(--dim); text-transform:uppercase; margin-bottom:5px; }
+    .modal-box .fld { margin-bottom:2px; }
+    .modal-note { font-size:11px; color:var(--dim); line-height:1.5; }
+    .modal-actions { display:flex; gap:10px; margin-top:6px; }
+    .modal-actions .btn, .modal-actions .btn-sec { flex:1; width:auto; }
+    .modal-err { color:var(--red); font-size:12px; }
+    .modal-ok { color:#1a7a1a; font-size:12px; }
   </style>
 </head>
 <body>
@@ -50,75 +66,82 @@
   </header>
 
   <div class="main">
-    <h1>Client Dashboards</h1>
-    <p class="sub">Select a client to open their paid system.</p>
-    <div class="clients">
-      <a class="client-card" id="card-madegood" href="#">
-        <div class="name">MadeGood</div>
-        <div class="desc">Paid influencer management</div>
-        <div class="arrow">→</div>
-      </a>
-      <a class="client-card" id="card-magna" href="#">
-        <div class="name">Magna</div>
-        <div class="desc">Paid influencer management</div>
-        <div class="arrow">→</div>
-      </a>
-      <a class="client-card" id="card-evolvetogether" href="#">
-        <div class="name">EvolveTogether</div>
-        <div class="desc">Paid influencer management</div>
-        <div class="arrow">→</div>
-      </a>
-      <a class="client-card" id="card-stardust" href="#">
-        <div class="name">Stardust</div>
-        <div class="desc">Paid influencer management</div>
-        <div class="arrow">→</div>
-      </a>
-      <a class="client-card" id="card-sys" href="#">
-        <div class="name">SYS</div>
-        <div class="desc">Paid influencer management</div>
-        <div class="arrow">→</div>
-      </a>
-      <a class="client-card" id="card-tacbrand" href="#">
-        <div class="name">The Absorption Company (Brand)</div>
-        <div class="desc">Paid influencer management</div>
-        <div class="arrow">→</div>
-      </a>
-      <a class="client-card" id="card-tacgrowth" href="#">
-        <div class="name">The Absorption Company (Growth)</div>
-        <div class="desc">Paid influencer management</div>
-        <div class="arrow">→</div>
-      </a>
+    <div class="main-top">
+      <div>
+        <h1>Client Dashboards</h1>
+        <p class="sub">Select a client to open their paid system.</p>
+      </div>
+    </div>
+    <div class="clients" id="clients-grid">
+      <div class="loading-note">Loading clients…</div>
+    </div>
+  </div>
+</div>
+
+<div id="add-modal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h2>Add a Client</h2>
+    <div class="fld">
+      <label>Client Name</label>
+      <input type="text" id="am-name" placeholder="e.g. Acme Beauty">
+    </div>
+    <div class="fld">
+      <label>Archive Workspace Name (optional)</label>
+      <input type="text" id="am-archive" placeholder="Name as it appears in Archive">
+    </div>
+    <div class="fld">
+      <label>Budget Tracker URL (optional)</label>
+      <input type="url" id="am-budget" placeholder="Leave blank if none built yet">
+    </div>
+    <div class="modal-note">This creates a full paid-system dashboard (Master Lists, Outreach, Paid Plan, Content Review, Live Posts) immediately. A budget tracker has to be built separately — leave the URL blank and add it later if you don't have one yet.</div>
+    <div id="am-msg"></div>
+    <div class="modal-actions">
+      <button class="btn-sec" id="am-cancel">Cancel</button>
+      <button class="btn" id="am-submit">Add Client</button>
     </div>
   </div>
 </div>
 
 <script>
 const HUB_PASSWORD = "a8paid123";
+const BASE_URL = "https://a8-paid-system.onrender.com";
 
-const CLIENTS = {
-  madegood:       { url: "https://a8-paid-system.onrender.com/madegood",        pw: "a8paid123" },
-  magna:          { url: "https://a8-paid-system.onrender.com/magna",            pw: "a8paid123" },
-  evolvetogether: { url: "https://a8-paid-system.onrender.com/evolvetogether",   pw: "a8paid123" },
-  stardust:       { url: "https://a8-paid-system.onrender.com/stardust",        pw: "a8paid123" },
-  sys:            { url: "https://a8-paid-system.onrender.com/sys",             pw: "a8paid123" },
-  tacbrand:       { url: "https://a8-paid-system.onrender.com/tacbrand",        pw: "a8paid123" },
-  tacgrowth:      { url: "https://a8-paid-system.onrender.com/tacgrowth",       pw: "a8paid123" },
-};
+function buildUrl(slug) {
+  return `${BASE_URL}/${slug}?pw=${encodeURIComponent(HUB_PASSWORD)}`;
+}
 
-function buildUrl(client) {
-  return `${client.url}?pw=${encodeURIComponent(client.pw)}`;
+async function loadClients() {
+  const grid = document.getElementById("clients-grid");
+  let clients = [];
+  try {
+    clients = await fetch(`${BASE_URL}/api/clients`).then(r => r.json());
+  } catch {
+    grid.innerHTML = `<div class="loading-note">Couldn't load clients — try refreshing.</div>`;
+    return;
+  }
+  grid.innerHTML = clients.map(c => `
+    <a class="client-card" href="${buildUrl(c.slug)}">
+      <div class="name">${escHtml(c.display_name)}</div>
+      <div class="desc">Paid influencer management</div>
+      <div class="arrow">→</div>
+    </a>
+  `).join("") + `
+    <div class="client-card add-card" id="card-add">
+      <div class="plus">+</div>
+      <div class="name" style="font-size:14px">Add Client</div>
+    </div>
+  `;
+  document.getElementById("card-add").addEventListener("click", openAddModal);
+}
+
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 }
 
 function showHub() {
   document.getElementById("gate").classList.add("hidden");
   document.getElementById("app").classList.remove("hidden");
-  document.getElementById("card-madegood").href       = buildUrl(CLIENTS.madegood);
-  document.getElementById("card-magna").href          = buildUrl(CLIENTS.magna);
-  document.getElementById("card-evolvetogether").href = buildUrl(CLIENTS.evolvetogether);
-  document.getElementById("card-stardust").href       = buildUrl(CLIENTS.stardust);
-  document.getElementById("card-sys").href            = buildUrl(CLIENTS.sys);
-  document.getElementById("card-tacbrand").href       = buildUrl(CLIENTS.tacbrand);
-  document.getElementById("card-tacgrowth").href      = buildUrl(CLIENTS.tacgrowth);
+  loadClients();
 }
 
 // Auto-show hub if already authenticated this session
@@ -135,6 +158,57 @@ document.getElementById("gate-btn").addEventListener("click", () => {
 });
 document.getElementById("gate-pw").addEventListener("keydown", e => {
   if (e.key === "Enter") document.getElementById("gate-btn").click();
+});
+
+// ── Add Client modal ──────────────────────────────────────────────────────────
+function openAddModal() {
+  document.getElementById("am-name").value = "";
+  document.getElementById("am-archive").value = "";
+  document.getElementById("am-budget").value = "";
+  document.getElementById("am-msg").innerHTML = "";
+  document.getElementById("add-modal").classList.remove("hidden");
+  document.getElementById("am-name").focus();
+}
+function closeAddModal() {
+  document.getElementById("add-modal").classList.add("hidden");
+}
+document.getElementById("am-cancel").addEventListener("click", closeAddModal);
+document.getElementById("add-modal").addEventListener("click", e => {
+  if (e.target.id === "add-modal") closeAddModal();
+});
+
+document.getElementById("am-submit").addEventListener("click", async () => {
+  const msg = document.getElementById("am-msg");
+  const display_name = document.getElementById("am-name").value.trim();
+  if (!display_name) { msg.innerHTML = `<div class="modal-err">Enter a client name.</div>`; return; }
+
+  const btn = document.getElementById("am-submit");
+  btn.disabled = true; btn.textContent = "Adding…";
+  try {
+    const resp = await fetch(`${BASE_URL}/api/clients`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        password: HUB_PASSWORD,
+        display_name,
+        archive_workspace_name: document.getElementById("am-archive").value.trim(),
+        budget_tracker_url:     document.getElementById("am-budget").value.trim(),
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "Something went wrong.");
+
+    const archiveNote = document.getElementById("am-archive").value.trim()
+      ? (data.archive_matched ? " Archive workspace matched." : " Couldn't find that Archive workspace by name — you can fix it later.")
+      : "";
+    msg.innerHTML = `<div class="modal-ok">Added "${escHtml(display_name)}".${archiveNote}</div>`;
+    await loadClients();
+    setTimeout(closeAddModal, 1400);
+  } catch (err) {
+    msg.innerHTML = `<div class="modal-err">${escHtml(err.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = "Add Client";
+  }
 });
 </script>
 </body>

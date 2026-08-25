@@ -3,6 +3,7 @@ MadeGood Paid System — FastAPI backend
 """
 
 import os
+import re
 import json
 import httpx
 from anthropic import Anthropic
@@ -20,14 +21,24 @@ app = FastAPI(title="Agency 8 Paid System")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # ── Multi-tenant client context ───────────────────────────────────────────────
-VALID_CLIENTS = {"madegood", "magna", "evolvetogether", "stardust", "sys", "tacbrand", "tacgrowth"}
+# Client registry lives in Supabase (`clients` table) so teammates can add a
+# client from the hub UI without a code change or redeploy. Kept in an
+# in-memory cache — refreshed at startup and immediately after any add — so
+# the hot per-request middleware path never has to hit the network.
+_clients_cache: dict = {}
+
+async def refresh_clients_cache():
+    global _clients_cache
+    rows = await sb_get("clients")
+    _clients_cache = {r["slug"]: r for r in rows}
+
 current_client: ContextVar[str] = ContextVar("current_client", default=config.CLIENT)
 
 class ClientContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Read client from ?ctx= query param (set by frontend based on URL path)
         ctx = request.query_params.get("ctx", "").strip()
-        if ctx not in VALID_CLIENTS:
+        if ctx not in _clients_cache:
             ctx = current_client.get()
         token = current_client.set(ctx)
         response = await call_next(request)
@@ -35,6 +46,13 @@ class ClientContextMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(ClientContextMiddleware)
+
+@app.on_event("startup")
+async def _load_clients_on_startup():
+    try:
+        await refresh_clients_cache()
+    except Exception as e:
+        print(f"WARNING: could not load clients table at startup: {e}")
 
 HERE   = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
@@ -1013,23 +1031,15 @@ async def delete_budget(id: int, password: str = ""):
 ARCHIVE_URL   = "https://app.archive.com/api/v2"
 ARCHIVE_TOKEN = os.environ.get("ARCHIVE_APP_TOKEN", "WLeD7XUAgkWeuPUmwHHF5DHLrwZWiX3B")
 
-# Per-client Archive workspace — resolved from current_client on every request,
-# not a single fixed value, since one server process serves all clients.
-ARCHIVE_WORKSPACES = {
-    "madegood":       "0cec8ea5-c3b3-4bb1-8083-eaab65719f8e",
-    "magna":          "1a9f4270-c1c5-4dde-bcfa-3040589e9184",
-    "evolvetogether": "c8493a78-3eb0-4bad-9567-70dc2dc76e98",
-    "stardust":       "d7413c10-4ac9-4a69-b7a6-0e0babaad8a1",
-    "sys":            "c522e827-edc6-4314-8737-919b19829e0b",
-    "tacbrand":       "77b77ba7-db31-44d2-819d-cc710cb89289",
-    "tacgrowth":      "77b77ba7-db31-44d2-819d-cc710cb89289",
-}
+# Per-client Archive workspace — resolved from current_client on every request
+# (not a single fixed value, since one server process serves all clients) via
+# the `clients` table / _clients_cache rather than a hardcoded dict.
 
 async def archive_query(query: str, variables: dict) -> dict:
     headers = {
         "Authorization": f"Bearer {ARCHIVE_TOKEN}",
         "Content-Type": "application/json",
-        "WORKSPACE-ID": ARCHIVE_WORKSPACES.get(current_client.get(), ""),
+        "WORKSPACE-ID": _clients_cache.get(current_client.get(), {}).get("archive_workspace_id") or "",
     }
     async with httpx.AsyncClient(timeout=30) as c:
         r = await c.post(ARCHIVE_URL, json={"query": query, "variables": variables}, headers=headers)
@@ -1056,7 +1066,7 @@ async def archive_debug():
     results = {
         "token": ARCHIVE_TOKEN[:8] + "...",
         "client": current_client.get(),
-        "workspace": ARCHIVE_WORKSPACES.get(current_client.get(), ""),
+        "workspace": _clients_cache.get(current_client.get(), {}).get("archive_workspace_id") or "",
     }
 
     # Test 1: campaigns query
@@ -1282,61 +1292,105 @@ async def get_reporting(start: str = "", end: str = ""):
         "pending_payment": len([p for p in payments if not p.get("paid")]),
     }
 
-# ── Serve frontend ────────────────────────────────────────────────────────────
-CLIENT_NAMES = {
-    "madegood":       "MadeGood",
-    "magna":          "Magna",
-    "evolvetogether": "EvolveTogether",
-    "stardust":       "Stardust",
-    "sys":            "SYS",
-    "tacbrand":       "The Absorption Company (Brand)",
-    "tacgrowth":      "The Absorption Company (Growth)",
-}
-BUDGET_URLS = {
-    "madegood":       "https://emmett-create.github.io/madegood-budget-tracker/",
-    "evolvetogether": "https://emmett-create.github.io/evolvetogether-budget-tracker/",
-    "magna":          "",
-    "stardust":       "https://emmett-create.github.io/stardust-budget-tracker/",
-    "sys":            "https://emmett-create.github.io/sys-budget-tracker/",
-    "tacbrand":       "",
-    "tacgrowth":      "",
-}
+# ── Client registry API (self-service "add a client" for the hub) ────────────
+def _slugify(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", name.lower())
 
+async def _lookup_archive_workspace_id(name: str) -> str:
+    """Best-effort match against Archive's own workspace list by name. Returns
+    "" (not an error) if nothing matches — the client still gets created,
+    just without Live Posts/Archive sync wired up yet."""
+    name_key = name.strip().lower()
+    if not name_key:
+        return ""
+    query = "query($c:String){ workspaces(after:$c){ pageInfo{hasNextPage endCursor} nodes{id name} } }"
+    cursor = None
+    for _ in range(10):  # ~200 workspaces max, plenty of headroom
+        headers = {"Authorization": f"Bearer {ARCHIVE_TOKEN}", "Content-Type": "application/json"}
+        async with httpx.AsyncClient(timeout=30) as c:
+            r = await c.post(ARCHIVE_URL, json={"query": query, "variables": {"c": cursor}}, headers=headers)
+        r.raise_for_status()
+        data = r.json().get("data", {}).get("workspaces", {})
+        for node in data.get("nodes", []):
+            if name_key in (node.get("name") or "").strip().lower():
+                return node["id"]
+        if not data.get("pageInfo", {}).get("hasNextPage"):
+            break
+        cursor = data["pageInfo"]["endCursor"]
+    return ""
+
+@app.get("/api/clients")
+def list_clients():
+    return sorted(_clients_cache.values(), key=lambda c: c["display_name"])
+
+class AddClientBody(BaseModel):
+    password: Optional[str] = None
+    display_name: str
+    archive_workspace_name: Optional[str] = ""
+    budget_tracker_url: Optional[str] = ""
+
+@app.post("/api/clients")
+async def add_client(body: AddClientBody):
+    check_auth(body.password)
+    display_name = body.display_name.strip()
+    slug = _slugify(display_name)
+    if not slug:
+        raise HTTPException(status_code=400, detail="Client name can't be blank.")
+    if slug in _clients_cache:
+        raise HTTPException(status_code=400, detail=f"A client called \"{display_name}\" already exists.")
+
+    archive_workspace_id = await _lookup_archive_workspace_id(body.archive_workspace_name or "")
+
+    row = {
+        "slug":                 slug,
+        "display_name":         display_name,
+        "budget_tracker_url":   (body.budget_tracker_url or "").strip(),
+        "archive_workspace_id": archive_workspace_id,
+    }
+    await sb_post("clients", row)
+    await refresh_clients_cache()
+    return {
+        "ok": True,
+        "slug": slug,
+        "archive_matched": bool(archive_workspace_id),
+    }
+
+# ── Serve frontend ────────────────────────────────────────────────────────────
 @app.get("/api/app_config")
 def app_config(ctx: str = ""):
-    client = ctx if ctx in VALID_CLIENTS else config.CLIENT
+    client = ctx if ctx in _clients_cache else config.CLIENT
+    info = _clients_cache.get(client, {})
     return {
         "client":             client,
-        "client_name":        CLIENT_NAMES.get(client, client.title()),
-        "budget_tracker_url": BUDGET_URLS.get(client, ""),
+        "client_name":        info.get("display_name") or client.title(),
+        "budget_tracker_url": info.get("budget_tracker_url") or "",
     }
 
 @app.get("/hub")
 def hub():
     return FileResponse(os.path.join(STATIC, "hub.html"))
 
-@app.get("/madegood")
-@app.get("/magna")
-@app.get("/evolvetogether")
-@app.get("/stardust")
-@app.get("/sys")
-@app.get("/tacbrand")
-@app.get("/tacgrowth")
-def client_app():
-    return FileResponse(os.path.join(STATIC, "index.html"))
-
-@app.get("/madegood/client")
-@app.get("/magna/client")
-@app.get("/evolvetogether/client")
-@app.get("/stardust/client")
-@app.get("/sys/client")
-@app.get("/tacbrand/client")
-@app.get("/tacgrowth/client")
-def client_view():
-    return FileResponse(os.path.join(STATIC, "client.html"))
-
 @app.get("/")
 def index():
     return FileResponse(os.path.join(STATIC, "gateway.html"))
+
+@app.get("/{client_slug}/client")
+def client_view(client_slug: str):
+    if client_slug not in _clients_cache:
+        raise HTTPException(status_code=404)
+    return FileResponse(os.path.join(STATIC, "client.html"))
+
+@app.get("/{client_slug}")
+def client_app(client_slug: str):
+    # Any client added via /api/clients works immediately — no new route needed.
+    if client_slug in _clients_cache:
+        return FileResponse(os.path.join(STATIC, "index.html"))
+    # Not a client — fall back to serving it as a static asset (logo.png,
+    # style.css, app.js, icon.png, ...) since this route's wildcard would
+    # otherwise shadow the StaticFiles mount below for single-segment paths.
+    asset_path = os.path.join(STATIC, client_slug)
+    if os.path.isfile(asset_path):
+        return FileResponse(asset_path)
+    raise HTTPException(status_code=404)
 
 app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")

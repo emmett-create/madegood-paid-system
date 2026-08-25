@@ -34,9 +34,12 @@ $("gate-btn").addEventListener("click", async () => {
 $("gate-pw").addEventListener("keydown", e => { if (e.key === "Enter") $("gate-btn").click(); });
 
 // ── Client context (read from URL path) ──────────────────────────────────────
-const _VALID_CLIENTS = ["madegood", "magna", "evolvetogether", "stardust", "sys", "tacbrand", "tacgrowth"];
+// No hardcoded client list here — the backend (/api/clients) is the single
+// source of truth. An unrecognized path segment just falls back server-side
+// (see app.py's /api/app_config), so nothing needs to change here when a
+// client is added via the hub's self-service form.
 const _pathClient = window.location.pathname.split("/").filter(Boolean)[0] || "";
-const CLIENT_CTX = _VALID_CLIENTS.includes(_pathClient) ? _pathClient : "madegood";
+const CLIENT_CTX = _pathClient || "madegood";
 
 function _withCtx(path) {
   const sep = path.includes("?") ? "&" : "?";
