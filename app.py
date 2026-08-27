@@ -1192,6 +1192,18 @@ def _apply_primary_platform_followers(row, mapping, ig_followers, tt_followers):
         return (ig_followers if ig_followers is not None else pp_followers), tt_followers
     return ig_followers, tt_followers
 
+# Same thresholds as the Add/Edit Creator modal's auto-fill (calcTier in
+# app.js) — kept in sync so a creator gets the same tier whether they were
+# added by hand or imported.
+def _calc_tier(total_followers):
+    if not total_followers:
+        return None
+    if total_followers < 25000:   return "Nano"
+    if total_followers < 100000:  return "Micro"
+    if total_followers < 250000:  return "Mid"
+    if total_followers < 1000000: return "Macro"
+    return "Mega"
+
 # Common ways "United States" gets written — normalized on import so Location
 # is filterable/consistent instead of a mix of USA/US/U.S. etc.
 LOCATION_ALIASES = {
@@ -1406,7 +1418,7 @@ async def import_execute(body: ImportExecuteBody):
                 "ig_followers": ig_followers,
                 "tt_followers": tt_followers,
                 "total_followers": (ig_followers or 0) + (tt_followers or 0) if (ig_followers or tt_followers) else None,
-                "tier": _cell(row, body.roster_mapping, "tier") or None,
+                "tier": _cell(row, body.roster_mapping, "tier") or _calc_tier((ig_followers or 0) + (tt_followers or 0)),
                 "gender": _cell(row, body.roster_mapping, "gender") or None,
                 "vertical": _cell(row, body.roster_mapping, "vertical") or None,
                 "location": _normalize_location(_cell(row, body.roster_mapping, "location")) or None,
