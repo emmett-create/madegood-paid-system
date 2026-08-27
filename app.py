@@ -1203,6 +1203,7 @@ class ImportExecuteBody(BaseModel):
     sheet_id: str
     roster_tab: Optional[str] = None
     roster_mapping: Optional[dict] = None    # {field: column_index}
+    roster_fixed_campaign: Optional[str] = None  # applied to every row, overrides any mapped Campaign column
     detail_tab: Optional[str] = None
     detail_mapping: Optional[dict] = None    # {DETAIL_FIELD_DEST key: column_index}
     password: Optional[str] = None
@@ -1269,7 +1270,7 @@ async def import_execute(body: ImportExecuteBody):
                 "vertical": _cell(row, body.roster_mapping, "vertical") or None,
                 "location": _cell(row, body.roster_mapping, "location") or None,
                 "email": _cell(row, body.roster_mapping, "email") or None,
-                "campaign": _cell(row, body.roster_mapping, "campaign") or None,
+                "campaign": body.roster_fixed_campaign or _cell(row, body.roster_mapping, "campaign") or None,
                 "outreach_notes": _cell(row, body.roster_mapping, "outreach_notes") or None,
                 "quoted_rate": _cell(row, body.roster_mapping, "quoted_rate") or None,
                 "landed_rate": _num(_cell(row, body.roster_mapping, "landed_rate")),
@@ -1279,7 +1280,7 @@ async def import_execute(body: ImportExecuteBody):
             deliverables = _cell(row, body.roster_mapping, "deliverables")
             key = name.strip().lower()
             entry = {"key": key, "payload": payload, "rate": rate, "deliverables": deliverables,
-                      "campaign": _cell(row, body.roster_mapping, "campaign") or None}
+                      "campaign": body.roster_fixed_campaign or _cell(row, body.roster_mapping, "campaign") or None}
             if key in name_to_id:
                 update_entries.append(entry)
             else:

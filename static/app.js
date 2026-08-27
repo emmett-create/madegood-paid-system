@@ -568,10 +568,16 @@ function importStep1() {
 function importStep2() {
   const { headers, sample_rows, total_rows } = _importState.rosterPreview;
   const guessed = _guessMapping(headers, Object.keys(ROSTER_FIELD_LABELS));
+  const fixedCampaignHtml = `
+    <div class="fld" style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+      <label>Fixed Campaign (optional — applies to every imported creator, overrides any Campaign column below)</label>
+      <input id="imp-fixed-campaign" placeholder="e.g. The Absorption Company - Brand - Hair Supplement" value="${esc(_importState.rosterFixedCampaign||"")}">
+    </div>`;
   openModal(`Map Roster Fields (${total_rows} rows)`,
-    _renderMappingStep(headers, sample_rows, Object.keys(ROSTER_FIELD_LABELS), ROSTER_FIELD_LABELS, guessed),
+    fixedCampaignHtml + _renderMappingStep(headers, sample_rows, Object.keys(ROSTER_FIELD_LABELS), ROSTER_FIELD_LABELS, guessed),
     async () => {
       _importState.rosterMapping = _readMappingFromDOM();
+      _importState.rosterFixedCampaign = document.getElementById("imp-fixed-campaign").value.trim() || null;
       if (_importState.rosterMapping.name === undefined) { alert("Name has to be mapped to a column."); return; }
       if (!_importState.detailTab) { importStep4(); return; }
       const btn = document.getElementById("modal-submit");
@@ -606,9 +612,13 @@ function importStep4() {
   const detailLine = _importState.detailTab
     ? `<li>Also reading <strong>${_importState.detailPreview.total_rows}</strong> rows from "${esc(_importState.detailTab)}", matched to creators by name, fanning out into whichever of Content Review / Paid Plan / Payment Status / Live Posts you mapped fields for.</li>`
     : "";
+  const campaignLine = _importState.rosterFixedCampaign
+    ? `<li>Every creator's Campaign will be set to <strong>"${esc(_importState.rosterFixedCampaign)}"</strong>.</li>`
+    : "";
   openModal("Confirm Import", `
     <ul style="font-size:13px;line-height:1.7;padding-left:18px;margin:0">
-      <li>Importing <strong>${rosterCount}</strong> rows from "${esc(_importState.rosterTab)}" into Master List${_importState.rosterMapping.landed_rate!==undefined?" + Paid Plan + Payment Status":""}.</li>
+      <li>Importing <strong>${rosterCount}</strong> rows from "${esc(_importState.rosterTab)}" into Master List (Internal only)${_importState.rosterMapping.landed_rate!==undefined?" + Paid Plan + Payment Status":""}.</li>
+      ${campaignLine}
       ${detailLine}
       <li>Creators are matched by name — an existing creator with the same name gets updated, not duplicated.</li>
     </ul>
@@ -619,6 +629,7 @@ function importStep4() {
       const result = await apiPost("/api/import/execute", {
         sheet_id: _importState.sheetId,
         roster_tab: _importState.rosterTab, roster_mapping: _importState.rosterMapping,
+        roster_fixed_campaign: _importState.rosterFixedCampaign,
         detail_tab: _importState.detailTab, detail_mapping: _importState.detailMapping,
       });
       importStep5(result);
