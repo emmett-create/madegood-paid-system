@@ -397,6 +397,47 @@ async def add_influencer(req: InfluencerIn):
         data["total_followers"] = (data["ig_followers"] or 0) + (data["tt_followers"] or 0)
     return await sb_post("paid_influencers", data)
 
+class BulkCopyExtBody(BaseModel):
+    ids: list
+    password: Optional[str] = None
+
+@app.post("/api/influencers/bulk_copy_to_ext")
+async def bulk_copy_to_ext(body: BulkCopyExtBody):
+    """Same fields as the single-row → EXT button, batched. Skips anyone
+    whose IG handle is already on the External list — same de-dupe rule
+    the single-row button already follows, just checked up front here."""
+    check_auth(body.password)
+    if not body.ids:
+        return {"copied": 0, "skipped_already_ext": 0}
+    client = current_client.get()
+    id_list = ",".join(str(int(i)) for i in body.ids)
+    int_rows = await sb_get("paid_influencers", f"?client=eq.{client}&id=in.({id_list})")
+    ext_rows = await sb_get("paid_influencers", f"?client=eq.{client}&list_type=eq.EXT&select=ig_handle")
+    ext_handles = {r["ig_handle"].strip().lower() for r in ext_rows if r.get("ig_handle")}
+
+    to_create, skipped = [], 0
+    for r in int_rows:
+        h = (r.get("ig_handle") or "").strip().lower()
+        if h and h in ext_handles:
+            skipped += 1
+            continue
+        to_create.append({
+            "client": client, "list_type": "EXT",
+            "name": r.get("name"), "ig_handle": r.get("ig_handle"), "ig_url": r.get("ig_url"),
+            "tt_handle": r.get("tt_handle"), "tt_url": r.get("tt_url"),
+            "ig_followers": r.get("ig_followers"), "tt_followers": r.get("tt_followers"),
+            "tier": r.get("tier"), "gender": r.get("gender"), "vertical": r.get("vertical"),
+            "archetype": r.get("archetype"), "location": r.get("location"),
+            "location_country": r.get("location_country"), "email": r.get("email"),
+            "campaign": r.get("campaign"), "audience_age": r.get("audience_age"),
+            "shopmy_data": r.get("shopmy_data"),
+        })
+        if h:
+            ext_handles.add(h)  # guards against two selected rows sharing a handle
+
+    created = await sb_post_bulk("paid_influencers", to_create) if to_create else []
+    return {"copied": len(created), "skipped_already_ext": skipped}
+
 @app.patch("/api/influencers/{id}")
 async def update_influencer(id: int, req: dict):
     check_auth(req.pop("password", None))
@@ -1131,10 +1172,36 @@ def _cell(row: list, mapping: dict, field: str) -> str:
     return (row[idx] or "").strip()
 
 ROSTER_FIELDS = [
-    "name", "ig_handle", "tt_handle", "ig_followers", "tt_followers", "tier",
-    "gender", "vertical", "location", "email", "campaign", "outreach_notes",
+    "name", "ig_handle", "tt_handle", "ig_followers", "tt_followers",
+    "primary_platform", "primary_platform_followers",
+    "tier", "gender", "vertical", "location", "email", "campaign", "outreach_notes",
     "quoted_rate", "landed_rate", "deliverables",
 ]
+
+# Some sheets only track ONE follower count — "whichever platform has more" —
+# via a Primary Platform + Followers-on-Primary-Platform pair, rather than
+# separate IG/TikTok columns. Routes that single number to the right field.
+def _apply_primary_platform_followers(row, mapping, ig_followers, tt_followers):
+    pp_followers = _num(_cell(row, mapping, "primary_platform_followers"))
+    if pp_followers is None:
+        return ig_followers, tt_followers
+    platform = _cell(row, mapping, "primary_platform").strip().lower()
+    if "tiktok" in platform or platform in ("tt", "tik tok"):
+        return ig_followers, (tt_followers if tt_followers is not None else pp_followers)
+    if "instagram" in platform or platform in ("ig",):
+        return (ig_followers if ig_followers is not None else pp_followers), tt_followers
+    return ig_followers, tt_followers
+
+# Common ways "United States" gets written — normalized on import so Location
+# is filterable/consistent instead of a mix of USA/US/U.S. etc.
+LOCATION_ALIASES = {
+    "usa": "United States", "us": "United States", "u.s.": "United States",
+    "u.s.a.": "United States", "united states of america": "United States",
+}
+def _normalize_location(raw):
+    if not raw:
+        return raw
+    return LOCATION_ALIASES.get(raw.strip().lower(), raw)
 
 # Everything from the "detail" tab (Content Review / Live Posts history) — one
 # combined field list because on a real historical sheet these all live on the
@@ -1331,6 +1398,7 @@ async def import_execute(body: ImportExecuteBody):
                 continue
             ig_followers = _num(_cell(row, body.roster_mapping, "ig_followers"))
             tt_followers = _num(_cell(row, body.roster_mapping, "tt_followers"))
+            ig_followers, tt_followers = _apply_primary_platform_followers(row, body.roster_mapping, ig_followers, tt_followers)
             payload = {
                 "name": name,
                 "ig_handle": _cell(row, body.roster_mapping, "ig_handle").lstrip("@") or None,
@@ -1341,7 +1409,7 @@ async def import_execute(body: ImportExecuteBody):
                 "tier": _cell(row, body.roster_mapping, "tier") or None,
                 "gender": _cell(row, body.roster_mapping, "gender") or None,
                 "vertical": _cell(row, body.roster_mapping, "vertical") or None,
-                "location": _cell(row, body.roster_mapping, "location") or None,
+                "location": _normalize_location(_cell(row, body.roster_mapping, "location")) or None,
                 "email": _cell(row, body.roster_mapping, "email") or None,
                 "campaign": body.roster_fixed_campaign or _cell(row, body.roster_mapping, "campaign") or None,
                 "outreach_notes": _cell(row, body.roster_mapping, "outreach_notes") or None,

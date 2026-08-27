@@ -64,6 +64,7 @@
             <select id="ml-filter-campaign" class="filter-sel"><option value="">All campaigns</option></select>
             <button class="btn-sec" id="btn-manage-campaigns" title="Add or remove campaign options">Manage Campaigns</button>
             <button class="btn-sec" id="btn-import-sheet" title="Bring in creators from an old spreadsheet">Import from Spreadsheet</button>
+            <button class="btn-sec" id="btn-bulk-ext" style="display:none" title="Add every checked creator to the External list">+ Add Selected to External</button>
             <button class="btn-pri" id="btn-add-influencer">+ Add Creator</button>
           </div>
         </div>
@@ -81,6 +82,7 @@
           <table class="tbl" id="ml-table">
             <thead>
               <tr>
+                <th class="int-col" style="text-align:center"><input type="checkbox" id="ml-select-all" title="Select all" style="accent-color:var(--red);width:15px;height:15px;cursor:pointer"></th>
                 <th class="ml-sort" data-col="name" style="cursor:pointer">Name <span class="sort-icon"></span></th>
                 <th>IG Handle</th>
                 <th>TT Handle</th>
@@ -99,7 +101,7 @@
                 <th></th>
               </tr>
             </thead>
-            <tbody id="ml-body"><tr><td colspan="15" class="empty-cell">Loading…</td></tr></tbody>
+            <tbody id="ml-body"><tr><td colspan="17" class="empty-cell">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>

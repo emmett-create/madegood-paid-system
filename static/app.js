@@ -323,7 +323,10 @@ document.getElementById("btn-manage-campaigns")?.addEventListener("click", async
 // ── Legacy spreadsheet import wizard ──────────────────────────────────────────
 const ROSTER_FIELD_LABELS = {
   name: "Name*", ig_handle: "IG Handle", tt_handle: "TikTok Handle",
-  ig_followers: "IG Followers", tt_followers: "TikTok Followers", tier: "Tier",
+  ig_followers: "IG Followers", tt_followers: "TikTok Followers",
+  primary_platform: "Primary Platform (IG/TikTok — only if there's no separate follower columns)",
+  primary_platform_followers: "Followers on Primary Platform",
+  tier: "Tier",
   gender: "Gender", vertical: "Vertical", location: "Location", email: "Email",
   campaign: "Campaign", outreach_notes: "Notes",
   quoted_rate: "Quoted Rate (initial ask)", landed_rate: "Landed Rate (final $ — also creates Paid Plan + Payment Status)",
@@ -367,6 +370,8 @@ const IMPORT_FIELD_ALIASES = {
   tt_handle: ["clean tt handle", "tiktok handle", "tt handle"],
   ig_followers: ["ig followers", "instagram followers"],
   tt_followers: ["tiktok followers", "tt followers"],
+  primary_platform: ["primary platform"],
+  primary_platform_followers: ["followers on primary platform"],
   tier: ["creator tier", "tier"],
   gender: ["gender"],
   vertical: ["vertical", "archetype"],
@@ -723,6 +728,9 @@ async function loadMasterList() {
     const inExt = currentListType === "INT" && r.ig_handle && extHandles.has(r.ig_handle.toLowerCase());
     const locDisplay = [r.location, r.location_country].filter(Boolean).join(", ");
     return `<tr>
+    <td class="int-col" style="text-align:center">
+      ${currentListType==="INT" ? `<input type="checkbox" class="ml-bulk-chk" data-id="${r.id}" ${inExt?"disabled title=\"Already in External\"":""} style="accent-color:var(--red);width:15px;height:15px;cursor:pointer">` : ""}
+    </td>
     <td><button class="btn-ml-snapshot" data-id="${r.id}" style="background:none;border:none;color:var(--text);font-weight:600;cursor:pointer;padding:0;text-align:left;text-decoration:underline;text-decoration-color:var(--border)" title="View full snapshot">${esc(r.name || "")}</button></td>
     <td>${r.ig_handle ? `<a href="${esc(r.ig_url||`https://instagram.com/${r.ig_handle}`)}" target="_blank">@${esc(r.ig_handle)}</a>` : "—"}</td>
     <td>${r.tt_handle ? `<a href="${esc(r.tt_url||`https://tiktok.com/@${r.tt_handle}`)}" target="_blank">@${esc(r.tt_handle)}</a>` : "—"}</td>
@@ -748,7 +756,7 @@ async function loadMasterList() {
       ${currentListType==="INT" ? `<button class="btn-icon btn-reject-inf" data-id="${r.id}" style="color:var(--red);font-size:11px" title="Reject">${r.int_status==="rejected"?"✕ Rejected":"Reject"}</button>` : ""}
       <button class="btn-icon btn-del-inf" data-id="${r.id}" title="Delete">✕</button>
     </td>
-  </tr>`;}).join("") : `<tr><td colspan="16" class="empty-cell">No creators yet. Click + Add Creator.</td></tr>`;
+  </tr>`;}).join("") : `<tr><td colspan="17" class="empty-cell">No creators yet. Click + Add Creator.</td></tr>`;
 
   // Name → creator snapshot
   document.querySelectorAll(".btn-ml-snapshot").forEach(b =>
@@ -883,6 +891,22 @@ async function loadMasterList() {
       if (inExtCell) inExtCell.innerHTML = `<span style="color:var(--green);font-weight:700;font-size:14px">✓</span>`;
     })
   );
+
+  document.querySelectorAll(".ml-bulk-chk").forEach(cb =>
+    cb.addEventListener("change", updateBulkExtButton)
+  );
+  const selectAll = $("ml-select-all");
+  if (selectAll) selectAll.checked = false;
+  updateBulkExtButton();
+}
+
+function updateBulkExtButton() {
+  const btn = $("btn-bulk-ext");
+  if (!btn) return;
+  const n = document.querySelectorAll(".ml-bulk-chk:checked").length;
+  btn.style.display = currentListType === "INT" ? "" : "none";
+  btn.textContent = n ? `+ Add ${n} Selected to External` : "+ Add Selected to External";
+  btn.disabled = n === 0;
 }
 
 // ── Tally / Pivot table ────────────────────────────────────────────────────────
@@ -1339,6 +1363,27 @@ document.querySelectorAll(".list-btn").forEach(btn => {
 ["ml-search","ml-filter-tier","ml-filter-gender","ml-filter-campaign"].forEach(id =>
   document.getElementById(id)?.addEventListener("input", () => loadMasterList())
 );
+
+document.getElementById("ml-select-all")?.addEventListener("change", (e) => {
+  document.querySelectorAll(".ml-bulk-chk:not(:disabled)").forEach(cb => cb.checked = e.target.checked);
+  updateBulkExtButton();
+});
+
+document.getElementById("btn-bulk-ext")?.addEventListener("click", async () => {
+  const ids = Array.from(document.querySelectorAll(".ml-bulk-chk:checked")).map(cb => parseInt(cb.dataset.id));
+  if (!ids.length) return;
+  if (!confirm(`Add ${ids.length} creator(s) to the External list?`)) return;
+  const btn = $("btn-bulk-ext");
+  btn.disabled = true; const prevText = btn.textContent; btn.textContent = "Adding…";
+  try {
+    const { copied, skipped_already_ext } = await apiPost("/api/influencers/bulk_copy_to_ext", { ids });
+    alert(`Added ${copied} to External.` + (skipped_already_ext ? ` ${skipped_already_ext} were already there.` : ""));
+    loadMasterList();
+  } catch (e) {
+    alert(e.message || "Couldn't add to External.");
+    btn.disabled = false; btn.textContent = prevText;
+  }
+});
 
 // Sort column headers
 document.querySelectorAll(".ml-sort").forEach(th =>
