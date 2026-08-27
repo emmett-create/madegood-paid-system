@@ -100,6 +100,31 @@ def anthropic_key_status():
         "has_whitespace": key != key.strip(),
     }
 
+# TEMPORARY — remove once the GOOGLE_CREDENTIALS_JSON import-wizard issue is
+# confirmed fixed. Reports presence/shape/validity only; never the actual key.
+@app.get("/api/debug/google_creds_status")
+def google_creds_status():
+    val = config.GOOGLE_CREDENTIALS_JSON
+    if not val:
+        return {"present": False}
+    info = {
+        "present": True,
+        "length": len(val),
+        "starts_with": val[:12],
+        "ends_with": val[-6:],
+        "has_leading_or_trailing_whitespace": val != val.strip(),
+    }
+    try:
+        parsed = json.loads(val)
+        info["valid_json"] = True
+        info["has_client_email"] = "client_email" in parsed
+        info["has_private_key"] = "private_key" in parsed
+        info["client_email"] = parsed.get("client_email")
+    except Exception as e:
+        info["valid_json"] = False
+        info["json_error"] = str(e)
+    return info
+
 # ── Supabase helpers ──────────────────────────────────────────────────────────
 def sb_headers():
     return {
