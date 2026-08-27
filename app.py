@@ -124,6 +124,18 @@ async def sb_post(table: str, data: dict) -> dict:
         r.raise_for_status()
         return r.json()[0] if r.json() else {}
 
+async def sb_post_bulk(table: str, rows: list) -> list:
+    """Insert many rows in one request — PostgREST accepts a JSON array body
+    and returns the created rows in the same order. Used by the spreadsheet
+    importer so a few-hundred-row sheet is a handful of requests, not one
+    sequential round-trip per row (which risks timing out mid-import)."""
+    if not rows:
+        return []
+    async with httpx.AsyncClient() as c:
+        r = await c.post(sb_url(table), headers=sb_headers(), json=rows, timeout=60)
+        r.raise_for_status()
+        return r.json()
+
 async def sb_patch(table: str, id: int, data: dict) -> dict:
     async with httpx.AsyncClient() as c:
         r = await c.patch(sb_url(table, f"?id=eq.{id}"), headers=sb_headers(), json=data, timeout=30)
@@ -1207,6 +1219,13 @@ async def import_execute(body: ImportExecuteBody):
             rows = await _read_tab_rows(body.sheet_id, body.roster_tab)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Couldn't read roster tab: {e}")
+
+        # Pass 1: build payloads. Split into brand-new creators (bulk-inserted
+        # a batch at a time) vs existing ones (patched individually — rare in
+        # practice, since name-matching only hits on a re-run). A sheet with a
+        # few hundred rows done one HTTP round-trip per row risks timing out
+        # mid-import; batching keeps a 300-person sheet to a handful of calls.
+        new_entries, update_entries = [], []
         for row in rows:
             name = _cell(row, body.roster_mapping, "name")
             if not name:
@@ -1231,36 +1250,54 @@ async def import_execute(body: ImportExecuteBody):
                 "landed_rate": _num(_cell(row, body.roster_mapping, "landed_rate")),
             }
             payload = {k: v for k, v in payload.items() if v is not None}
-            key = name.strip().lower()
-            if key in name_to_id:
-                inf_id = name_to_id[key]
-                await sb_patch("paid_influencers", inf_id, payload)
-                result["creators_updated"] += 1
-            else:
-                payload.update({"client": client, "list_type": "INT", "in_paid_plan": True})
-                created = await sb_post("paid_influencers", payload)
-                inf_id = created.get("id")
-                name_to_id[key] = inf_id
-                result["creators_created"] += 1
-
             rate = _num(_cell(row, body.roster_mapping, "landed_rate"))
             deliverables = _cell(row, body.roster_mapping, "deliverables")
-            if rate and inf_id:
-                ps = await sb_post("payment_status", {
-                    "client": client, "influencer_id": inf_id,
-                    "agreed_rate": rate, "deliverables": deliverables or None,
-                    "status": "Imported from spreadsheet",
-                })
-                inf_to_payment_status_id[inf_id] = ps.get("id")
-                result["payment_status_created"] += 1
-                pp = await sb_post("paid_plan", {
-                    "client": client, "influencer_id": inf_id,
-                    "status": "Locked", "accepted_offer": rate,
-                    "campaign": _cell(row, body.roster_mapping, "campaign") or None,
-                    "notes": deliverables or None,
-                })
-                inf_to_paid_plan_id[inf_id] = pp.get("id")
-                result["paid_plan_created"] += 1
+            key = name.strip().lower()
+            entry = {"key": key, "payload": payload, "rate": rate, "deliverables": deliverables,
+                      "campaign": _cell(row, body.roster_mapping, "campaign") or None}
+            if key in name_to_id:
+                update_entries.append(entry)
+            else:
+                new_entries.append(entry)
+
+        # Existing creators — individually patched (small in practice).
+        for e in update_entries:
+            inf_id = name_to_id[e["key"]]
+            await sb_patch("paid_influencers", inf_id, e["payload"])
+            result["creators_updated"] += 1
+            e["inf_id"] = inf_id
+
+        # Brand-new creators — bulk-inserted in chunks of 100.
+        CHUNK = 100
+        for i in range(0, len(new_entries), CHUNK):
+            batch = new_entries[i:i+CHUNK]
+            bulk_payload = [{**e["payload"], "client": client, "list_type": "INT", "in_paid_plan": True} for e in batch]
+            created_rows = await sb_post_bulk("paid_influencers", bulk_payload)
+            for e, created in zip(batch, created_rows):
+                inf_id = created.get("id")
+                e["inf_id"] = inf_id
+                name_to_id[e["key"]] = inf_id
+                result["creators_created"] += 1
+
+        # Rate/deliverables → Payment Status + Paid Plan, also bulk-inserted.
+        rated = [e for e in (new_entries + update_entries) if e["rate"] and e.get("inf_id")]
+        for i in range(0, len(rated), CHUNK):
+            batch = rated[i:i+CHUNK]
+            ps_rows = await sb_post_bulk("payment_status", [{
+                "client": client, "influencer_id": e["inf_id"],
+                "agreed_rate": e["rate"], "deliverables": e["deliverables"] or None,
+                "status": "Imported from spreadsheet",
+            } for e in batch])
+            pp_rows = await sb_post_bulk("paid_plan", [{
+                "client": client, "influencer_id": e["inf_id"],
+                "status": "Locked", "accepted_offer": e["rate"],
+                "campaign": e["campaign"], "notes": e["deliverables"] or None,
+            } for e in batch])
+            for e, ps, pp in zip(batch, ps_rows, pp_rows):
+                inf_to_payment_status_id[e["inf_id"]] = ps.get("id")
+                inf_to_paid_plan_id[e["inf_id"]] = pp.get("id")
+            result["payment_status_created"] += len(ps_rows)
+            result["paid_plan_created"] += len(pp_rows)
 
     if body.detail_tab and body.detail_mapping:
         try:
