@@ -1199,6 +1199,32 @@ async def import_preview(body: ImportPreviewBody):
     non_blank = [r for r in rows if any(c.strip() for c in r)]
     return {"headers": headers, "sample_rows": non_blank[:5], "total_rows": len(non_blank)}
 
+class ImportCountBody(BaseModel):
+    sheet_id: str
+    tab: str
+    mapping: dict
+    password: Optional[str] = None
+
+@app.post("/api/import/count")
+async def import_count(body: ImportCountBody):
+    """Real count of rows that will actually import with this mapping — the
+    plain preview count includes blank rows with formula-derived cells, so
+    it can overcount until Name + IG/TikTok handle are known and checked."""
+    check_auth(body.password)
+    try:
+        rows = await _read_tab_rows(body.sheet_id, body.tab)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Couldn't read that tab: {e}")
+    has_handle_cols = "ig_handle" in body.mapping or "tt_handle" in body.mapping
+    count = 0
+    for row in rows:
+        if not _cell(row, body.mapping, "name"):
+            continue
+        if has_handle_cols and not _cell(row, body.mapping, "ig_handle") and not _cell(row, body.mapping, "tt_handle"):
+            continue
+        count += 1
+    return {"count": count}
+
 class ImportExecuteBody(BaseModel):
     sheet_id: str
     roster_tab: Optional[str] = None
@@ -1251,10 +1277,16 @@ async def import_execute(body: ImportExecuteBody):
         # practice, since name-matching only hits on a re-run). A sheet with a
         # few hundred rows done one HTTP round-trip per row risks timing out
         # mid-import; batching keeps a 300-person sheet to a handful of calls.
+        # A blank row can still carry a formula-derived, non-empty Name cell —
+        # requiring an actual IG or TikTok handle too is a much more reliable
+        # "is this a real row" check than Name alone.
+        has_handle_cols = "ig_handle" in body.roster_mapping or "tt_handle" in body.roster_mapping
         new_entries, update_entries = [], []
         for row in rows:
             name = _cell(row, body.roster_mapping, "name")
             if not name:
+                continue
+            if has_handle_cols and not _cell(row, body.roster_mapping, "ig_handle") and not _cell(row, body.roster_mapping, "tt_handle"):
                 continue
             ig_followers = _num(_cell(row, body.roster_mapping, "ig_followers"))
             tt_followers = _num(_cell(row, body.roster_mapping, "tt_followers"))

@@ -579,10 +579,12 @@ function importStep2() {
       _importState.rosterMapping = _readMappingFromDOM();
       _importState.rosterFixedCampaign = document.getElementById("imp-fixed-campaign").value.trim() || null;
       if (_importState.rosterMapping.name === undefined) { alert("Name has to be mapped to a column."); return; }
-      if (!_importState.detailTab) { importStep4(); return; }
       const btn = document.getElementById("modal-submit");
       btn.disabled = true; btn.textContent = "Loading…";
       try {
+        const { count } = await apiPost("/api/import/count", { sheet_id: _importState.sheetId, tab: _importState.rosterTab, mapping: _importState.rosterMapping });
+        _importState.rosterRealCount = count;
+        if (!_importState.detailTab) { importStep4(); return; }
         const preview = await apiPost("/api/import/preview", { sheet_id: _importState.sheetId, tab: _importState.detailTab });
         _importState.detailPreview = preview;
         importStep3();
@@ -608,7 +610,7 @@ function importStep3() {
 }
 
 function importStep4() {
-  const rosterCount = _importState.rosterPreview.total_rows;
+  const rosterCount = _importState.rosterRealCount ?? _importState.rosterPreview.total_rows;
   const detailLine = _importState.detailTab
     ? `<li>Also reading <strong>${_importState.detailPreview.total_rows}</strong> rows from "${esc(_importState.detailTab)}", matched to creators by name, fanning out into whichever of Content Review / Paid Plan / Payment Status / Live Posts you mapped fields for.</li>`
     : "";
