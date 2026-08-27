@@ -161,6 +161,33 @@ async def sb_post_bulk(table: str, rows: list) -> list:
         r.raise_for_status()
         return r.json()
 
+async def _bulk_insert_with_fallback(table: str, labeled_payloads: list) -> list:
+    """labeled_payloads: [(label, payload_dict), ...]. One bulk insert is a
+    single SQL statement — if ANY row in it is bad, PostgREST rejects the
+    WHOLE batch. Falls back to one-at-a-time (capturing each row's real
+    error) so one bad row can never block everyone else in the same chunk.
+    Returns [(label, created_row_or_None, error_string_or_None), ...]."""
+    if not labeled_payloads:
+        return []
+    labels = [l for l, _ in labeled_payloads]
+    payloads = [p for _, p in labeled_payloads]
+    try:
+        created = await sb_post_bulk(table, payloads)
+        if len(created) == len(payloads):
+            return list(zip(labels, created, [None] * len(labels)))
+    except Exception:
+        pass
+    out = []
+    for label, payload in labeled_payloads:
+        try:
+            row = await sb_post(table, payload)
+            out.append((label, row, None))
+        except httpx.HTTPStatusError as e:
+            out.append((label, None, e.response.text[:300]))
+        except Exception as e:
+            out.append((label, None, str(e)[:300]))
+    return out
+
 async def sb_patch(table: str, id: int, data: dict) -> dict:
     async with httpx.AsyncClient() as c:
         r = await c.patch(sb_url(table, f"?id=eq.{id}"), headers=sb_headers(), json=data, timeout=30)
@@ -1251,15 +1278,24 @@ async def import_execute(body: ImportExecuteBody):
     check_auth(body.password)
     client = current_client.get()
     result = {
-        "creators_created": 0, "creators_updated": 0,
-        "payment_status_created": 0, "payment_status_updated": 0,
-        "paid_plan_created": 0, "paid_plan_updated": 0,
+        "creators_created": 0, "creators_updated": 0, "creators_failed": [],
+        "duplicates_merged_within_sheet": 0,
+        "payment_status_created": 0, "payment_status_updated": 0, "payment_status_failed": [],
+        "paid_plan_created": 0, "paid_plan_updated": 0, "paid_plan_failed": [],
         "content_review_created": 0, "live_posts_created": 0,
         "detail_skipped_no_match": [],
     }
 
-    existing = await sb_get("paid_influencers", f"?client=eq.{client}&select=id,name")
+    existing = await sb_get("paid_influencers", f"?client=eq.{client}&select=id,name,ig_handle,tt_handle")
     name_to_id = {e["name"].strip().lower(): e["id"] for e in existing if e.get("name")}
+    # IG/TikTok handle is a more reliable duplicate check than name (typos,
+    # nicknames, "Firstname Lastname" vs "Firstname L." all break name-only
+    # matching) — checked first, name is the fallback.
+    handle_to_id = {}
+    for e in existing:
+        for h in (e.get("ig_handle"), e.get("tt_handle")):
+            if h:
+                handle_to_id[h.strip().lower().lstrip("@")] = e["id"]
     # Tracks the payment_status / paid_plan row created for each creator during the
     # roster pass, so the detail pass can update the SAME row instead of creating a
     # second one when both tabs carry rate/deliverables data for the same person.
@@ -1282,6 +1318,11 @@ async def import_execute(body: ImportExecuteBody):
         # "is this a real row" check than Name alone.
         has_handle_cols = "ig_handle" in body.roster_mapping or "tt_handle" in body.roster_mapping
         new_entries, update_entries = [], []
+        # Tracks names/handles queued as NEW earlier in this same sheet — a
+        # working list can genuinely list the same person twice (e.g. added
+        # in two different months' rows). Without this, neither row matches
+        # the pre-existing DB, so both would become separate new creators.
+        seen_this_run = {}
         for row in rows:
             name = _cell(row, body.roster_mapping, "name")
             if not name:
@@ -1311,51 +1352,95 @@ async def import_execute(body: ImportExecuteBody):
             rate = _num(_cell(row, body.roster_mapping, "landed_rate"))
             deliverables = _cell(row, body.roster_mapping, "deliverables")
             key = name.strip().lower()
+            ig_key = (payload.get("ig_handle") or "").strip().lower()
+            tt_key = (payload.get("tt_handle") or "").strip().lower()
+
+            match_id = handle_to_id.get(ig_key) or handle_to_id.get(tt_key) or name_to_id.get(key)
             entry = {"key": key, "payload": payload, "rate": rate, "deliverables": deliverables,
                       "campaign": body.roster_fixed_campaign or _cell(row, body.roster_mapping, "campaign") or None}
-            if key in name_to_id:
+
+            if match_id:
+                entry["match_id"] = match_id
                 update_entries.append(entry)
-            else:
-                new_entries.append(entry)
+                continue
+
+            # Not in the DB yet — but is it a duplicate of an earlier row in
+            # THIS same sheet? If so, merge into that queued entry instead of
+            # adding a second one (last value wins per field).
+            dup_idx = seen_this_run.get(ig_key) if ig_key else None
+            if dup_idx is None and tt_key:
+                dup_idx = seen_this_run.get(tt_key)
+            if dup_idx is None:
+                dup_idx = seen_this_run.get(key)
+            if dup_idx is not None:
+                new_entries[dup_idx]["payload"].update(payload)
+                if rate: new_entries[dup_idx]["rate"] = rate
+                if deliverables: new_entries[dup_idx]["deliverables"] = deliverables
+                result["duplicates_merged_within_sheet"] += 1
+                continue
+
+            new_entries.append(entry)
+            idx = len(new_entries) - 1
+            seen_this_run[key] = idx
+            if ig_key: seen_this_run[ig_key] = idx
+            if tt_key: seen_this_run[tt_key] = idx
 
         # Existing creators — individually patched (small in practice).
         for e in update_entries:
-            inf_id = name_to_id[e["key"]]
-            await sb_patch("paid_influencers", inf_id, e["payload"])
-            result["creators_updated"] += 1
-            e["inf_id"] = inf_id
+            inf_id = e["match_id"]
+            try:
+                await sb_patch("paid_influencers", inf_id, e["payload"])
+                result["creators_updated"] += 1
+                e["inf_id"] = inf_id
+            except Exception as ex:
+                result["creators_failed"].append({"name": e["payload"].get("name", e["key"]), "error": str(ex)[:300]})
 
-        # Brand-new creators — bulk-inserted in chunks of 100.
+        # Brand-new creators — bulk-inserted in chunks of 100, each chunk
+        # falling back to one-at-a-time if the batch itself fails.
         CHUNK = 100
         for i in range(0, len(new_entries), CHUNK):
             batch = new_entries[i:i+CHUNK]
-            bulk_payload = [{**e["payload"], "client": client, "list_type": "INT", "in_paid_plan": True} for e in batch]
-            created_rows = await sb_post_bulk("paid_influencers", bulk_payload)
-            for e, created in zip(batch, created_rows):
-                inf_id = created.get("id")
-                e["inf_id"] = inf_id
-                name_to_id[e["key"]] = inf_id
-                result["creators_created"] += 1
+            labeled = [(idx, {**e["payload"], "client": client, "list_type": "INT", "in_paid_plan": True})
+                       for idx, e in enumerate(batch)]
+            outcomes = await _bulk_insert_with_fallback("paid_influencers", labeled)
+            for idx, created, err in outcomes:
+                e = batch[idx]
+                if created:
+                    inf_id = created.get("id")
+                    e["inf_id"] = inf_id
+                    name_to_id[e["key"]] = inf_id
+                    result["creators_created"] += 1
+                else:
+                    result["creators_failed"].append({"name": e["payload"].get("name", e["key"]), "error": err})
 
-        # Rate/deliverables → Payment Status + Paid Plan, also bulk-inserted.
+        # Rate/deliverables → Payment Status + Paid Plan, same bulk-with-fallback approach.
         rated = [e for e in (new_entries + update_entries) if e["rate"] and e.get("inf_id")]
         for i in range(0, len(rated), CHUNK):
             batch = rated[i:i+CHUNK]
-            ps_rows = await sb_post_bulk("payment_status", [{
+            ps_labeled = [(idx, {
                 "client": client, "influencer_id": e["inf_id"],
                 "agreed_rate": e["rate"], "deliverables": e["deliverables"] or None,
                 "status": "Imported from spreadsheet",
-            } for e in batch])
-            pp_rows = await sb_post_bulk("paid_plan", [{
+            }) for idx, e in enumerate(batch)]
+            pp_labeled = [(idx, {
                 "client": client, "influencer_id": e["inf_id"],
                 "status": "Locked", "accepted_offer": e["rate"],
                 "campaign": e["campaign"], "notes": e["deliverables"] or None,
-            } for e in batch])
-            for e, ps, pp in zip(batch, ps_rows, pp_rows):
-                inf_to_payment_status_id[e["inf_id"]] = ps.get("id")
-                inf_to_paid_plan_id[e["inf_id"]] = pp.get("id")
-            result["payment_status_created"] += len(ps_rows)
-            result["paid_plan_created"] += len(pp_rows)
+            }) for idx, e in enumerate(batch)]
+            ps_outcomes = await _bulk_insert_with_fallback("payment_status", ps_labeled)
+            pp_outcomes = await _bulk_insert_with_fallback("paid_plan", pp_labeled)
+            for idx, created, err in ps_outcomes:
+                if created:
+                    inf_to_payment_status_id[batch[idx]["inf_id"]] = created.get("id")
+                    result["payment_status_created"] += 1
+                else:
+                    result["payment_status_failed"].append({"name": batch[idx]["payload"].get("name", ""), "error": err})
+            for idx, created, err in pp_outcomes:
+                if created:
+                    inf_to_paid_plan_id[batch[idx]["inf_id"]] = created.get("id")
+                    result["paid_plan_created"] += 1
+                else:
+                    result["paid_plan_failed"].append({"name": batch[idx]["payload"].get("name", ""), "error": err})
 
     if body.detail_tab and body.detail_mapping:
         try:

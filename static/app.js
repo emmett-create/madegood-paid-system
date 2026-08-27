@@ -622,7 +622,7 @@ function importStep4() {
       <li>Importing <strong>${rosterCount}</strong> rows from "${esc(_importState.rosterTab)}" into Master List (Internal only)${_importState.rosterMapping.landed_rate!==undefined?" + Paid Plan + Payment Status":""}.</li>
       ${campaignLine}
       ${detailLine}
-      <li>Creators are matched by name — an existing creator with the same name gets updated, not duplicated.</li>
+      <li>Creators already in the list (matched by IG/TikTok handle first, then name) get updated, not duplicated — including duplicates within the sheet itself.</li>
     </ul>
   `, async () => {
     const btn = document.getElementById("modal-submit");
@@ -645,14 +645,23 @@ function importStep4() {
 
 function importStep5(result) {
   const skipped = result.detail_skipped_no_match || [];
+  const failLine = (list, label) => {
+    if (!list || !list.length) return "";
+    const items = list.slice(0, 8).map(f => `<li style="margin-left:14px">${esc(f.name||"(unnamed)")} — <span style="color:var(--dim)">${esc((f.error||"").slice(0,150))}</span></li>`).join("");
+    return `<li style="color:var(--red)">${list.length} ${label} failed:<ul style="margin:4px 0">${items}</ul>${list.length>8?`<span style="color:var(--dim)">…and ${list.length-8} more</span>`:""}</li>`;
+  };
   openModal("Import Complete", `
     <ul style="font-size:13px;line-height:1.8;padding-left:18px;margin:0">
       <li><strong>${result.creators_created}</strong> creators created, <strong>${result.creators_updated}</strong> updated</li>
+      ${result.duplicates_merged_within_sheet ? `<li><strong>${result.duplicates_merged_within_sheet}</strong> duplicate row(s) within the sheet itself merged into one creator</li>` : ""}
       <li><strong>${result.paid_plan_created}</strong> Paid Plan entries created, <strong>${result.paid_plan_updated}</strong> updated</li>
       <li><strong>${result.payment_status_created}</strong> Payment Status entries created, <strong>${result.payment_status_updated}</strong> updated</li>
       <li><strong>${result.content_review_created}</strong> Content Review entries created</li>
       <li><strong>${result.live_posts_created}</strong> Live Posts entries created</li>
       ${skipped.length ? `<li style="color:var(--red)">${skipped.length} detail row(s) skipped — no matching creator name: ${skipped.slice(0,10).map(esc).join(", ")}${skipped.length>10?"…":""}</li>` : ""}
+      ${failLine(result.creators_failed, "creator(s)")}
+      ${failLine(result.payment_status_failed, "Payment Status entrie(s)")}
+      ${failLine(result.paid_plan_failed, "Paid Plan entrie(s)")}
     </ul>
   `, () => { closeModal(); });
   document.getElementById("modal-submit").textContent = "Done";
