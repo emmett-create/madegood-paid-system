@@ -703,10 +703,15 @@ async function loadMasterList() {
   }
 
   // Sort
+  const isInExt = r => r.ig_handle && extHandles.has(r.ig_handle.toLowerCase()) ? 1 : 0;
   rows.sort((a, b) => {
-    let av = a[mlSortCol] ?? "", bv = b[mlSortCol] ?? "";
-    if (["ig_followers","tt_followers"].includes(mlSortCol)) { av = +av || 0; bv = +bv || 0; }
-    else { av = String(av).toLowerCase(); bv = String(bv).toLowerCase(); }
+    let av, bv;
+    if (mlSortCol === "in_ext") { av = isInExt(a); bv = isInExt(b); }
+    else {
+      av = a[mlSortCol] ?? ""; bv = b[mlSortCol] ?? "";
+      if (["ig_followers","tt_followers"].includes(mlSortCol)) { av = +av || 0; bv = +bv || 0; }
+      else { av = String(av).toLowerCase(); bv = String(bv).toLowerCase(); }
+    }
     if (av < bv) return mlSortDir === "asc" ? -1 : 1;
     if (av > bv) return mlSortDir === "asc" ?  1 : -1;
     return 0;
