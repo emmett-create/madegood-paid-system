@@ -41,6 +41,10 @@ $("gate-pw").addEventListener("keydown", e => { if (e.key === "Enter") $("gate-b
 const _pathClient = window.location.pathname.split("/").filter(Boolean)[0] || "";
 const CLIENT_CTX = _pathClient || "madegood";
 
+// SYS-only columns (e.g. "LEMON Feedback" in Content Review) are always in the
+// DOM but hidden via this class for every other client — see .sys-col in style.css.
+document.getElementById("cr-table")?.classList.toggle("cr-sys", CLIENT_CTX === "sys");
+
 function _withCtx(path) {
   const sep = path.includes("?") ? "&" : "?";
   return `${path}${sep}ctx=${CLIENT_CTX}`;
@@ -188,27 +192,42 @@ function populateCampaignChips(filter) {
   if (!chips) return;
   const f = filter.toLowerCase();
   const matches = _campAllOptions.filter(c => !f || c.toLowerCase().includes(f));
-  const current = document.getElementById("mf-campaign")?.value || "";
-  chips.innerHTML = matches.map(c => `
-    <div onclick="selectCampaign('${esc(c)}')" style="cursor:pointer;padding:5px 12px;border-radius:20px;font-size:12px;border:1px solid var(--border);background:${c===current?'var(--red)':'var(--panel2)'};color:${c===current?'#fff':'var(--text)'}">
+  const current = (document.getElementById("mf-campaign")?.value || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+  chips.innerHTML = matches.map(c => {
+    const active = current.includes(c.toLowerCase());
+    return `<div onclick="toggleCampaign('${esc(c)}')" style="cursor:pointer;padding:5px 12px;border-radius:20px;font-size:12px;border:1px solid var(--border);background:${active?'var(--red)':'var(--panel2)'};color:${active?'#fff':'var(--text)'}">
       ${esc(c)}
-    </div>`).join("") || `<div style="font-size:12px;color:var(--dim)">No matches — press Enter to create</div>`;
+    </div>`;
+  }).join("") || `<div style="font-size:12px;color:var(--dim)">No matches — press Enter to create</div>`;
 }
 
 function filterCampaignChips(val) {
   populateCampaignChips(val);
 }
 
-function selectCampaign(val) {
-  const hidden = document.getElementById("mf-campaign");
+// A creator can belong to multiple campaigns — stored comma-joined in the same
+// `campaign` text column (same pattern as the multi-select Vertical field).
+function toggleCampaign(val) {
+  const hidden  = document.getElementById("mf-campaign");
+  const current = (hidden?.value || "").split(",").map(s => s.trim()).filter(Boolean);
+  const idx = current.findIndex(c => c.toLowerCase() === val.toLowerCase());
+  if (idx >= 0) current.splice(idx, 1); else current.push(val);
+  const joined = current.join(", ");
+  if (hidden) hidden.value = joined;
   const display = document.getElementById("camp-val-display");
-  if (hidden) hidden.value = val;
   if (display) {
-    display.textContent = val || "Select or type new…";
-    display.style.color = val ? "var(--text)" : "var(--dim)";
+    display.textContent = joined || "Select or type new…";
+    display.style.color = joined ? "var(--text)" : "var(--dim)";
   }
-  const panel = document.getElementById("camp-panel");
-  if (panel) panel.style.display = "none";
+  populateCampaignChips(document.getElementById("camp-search")?.value || "");
+}
+
+function clearCampaigns() {
+  const hidden = document.getElementById("mf-campaign");
+  if (hidden) hidden.value = "";
+  const display = document.getElementById("camp-val-display");
+  if (display) { display.textContent = "Select or type new…"; display.style.color = "var(--dim)"; }
+  populateCampaignChips(document.getElementById("camp-search")?.value || "");
 }
 
 // ── Vertical picker helpers (multi-select checklist, used in Edit Creator modal) ──
@@ -301,6 +320,334 @@ document.getElementById("btn-manage-campaigns")?.addEventListener("click", async
   });
 });
 
+// ── Legacy spreadsheet import wizard ──────────────────────────────────────────
+const ROSTER_FIELD_LABELS = {
+  name: "Name*", ig_handle: "IG Handle", tt_handle: "TikTok Handle",
+  ig_followers: "IG Followers", tt_followers: "TikTok Followers", tier: "Tier",
+  gender: "Gender", vertical: "Vertical", location: "Location", email: "Email",
+  campaign: "Campaign", outreach_notes: "Notes",
+  quoted_rate: "Quoted Rate (initial ask)", landed_rate: "Landed Rate (final $ — also creates Paid Plan + Payment Status)",
+  deliverables: "Deliverables (free text — goes with Landed Rate)",
+};
+// Grouped so the UI can show which table each field actually writes to —
+// these all come from ONE historical tab but fan out to 4 different tables.
+const DETAIL_FIELD_GROUPS = [
+  { table: "Content Review", fields: {
+    cr_deliverable_type: "Deliverable Type", cr_month: "Month",
+    cr_concept: "Concept (final)", cr_concept_feedback: "Concept Feedback",
+    cr_notes: "Notes / raw deliverables text",
+    cr_content_v1: "Content V1 (link)", cr_caption_v1: "Caption V1",
+    cr_a8_feedback_v1: "A8 Feedback V1", cr_client_feedback_v1: "Client Feedback V1",
+    cr_content_v2: "Content V2 (link)", cr_caption_v2: "Caption V2",
+    cr_a8_feedback_v2: "A8 Feedback V2", cr_client_feedback_v2: "Client Feedback V2",
+    cr_content_due_date: "Content Due Date", cr_live_date: "Live Date",
+    cr_approved_by_client: "Approved? (yes/no)",
+  }},
+  { table: "Paid Plan", fields: { pp_contract_link: "Contract Link" }},
+  { table: "Payment Status", fields: {
+    ps_agreed_rate: "Agreed/Confirmed Rate ($) — overrides roster tab's Landed Rate if both set",
+    ps_deliverables: "Deliverables — overrides roster tab's if both set",
+    ps_paid: "Payment Complete? (yes/no)",
+  }},
+  { table: "Live Posts", fields: {
+    lp_live_date: "Live Date", lp_raw_content_link: "Raw File Link", lp_live_link: "Live Post Link",
+    lp_ig_spark_code: "Whitelisting/Spark Code (IG)", lp_tt_spark_code: "Spark Code (TikTok)",
+    lp_utm_link: "UTM Link", lp_discount_code: "Discount Code",
+    lp_total_views: "Total Views", lp_likes: "Likes", lp_comments: "Comments",
+    lp_shares: "Shares", lp_saves: "Saves",
+    lp_impressions: "Impressions", lp_reach: "Reach", lp_emv: "EMV",
+    lp_engagements: "Engagements", lp_cpm: "CPM",
+  }},
+];
+const DETAIL_FIELD_LABELS = Object.assign({ name: "Name* (matches creator by name)" },
+  ...DETAIL_FIELD_GROUPS.flatMap(g => g.fields));
+const IMPORT_FIELD_ALIASES = {
+  name: ["name"],
+  ig_handle: ["clean ig handle", "ig handle"],
+  tt_handle: ["clean tt handle", "tiktok handle", "tt handle"],
+  ig_followers: ["ig followers", "instagram followers"],
+  tt_followers: ["tiktok followers", "tt followers"],
+  tier: ["creator tier", "tier"],
+  gender: ["gender"],
+  vertical: ["vertical", "archetype"],
+  location: ["location", "country"],
+  email: ["email"],
+  campaign: ["campaign", "month"],
+  outreach_notes: ["status"],
+  quoted_rate: ["creator initial rate", "initial rate", "quoted rate"],
+  landed_rate: ["agreed rate", "confrimed rate", "confirmed rate", "landed rate"],
+  deliverables: ["agreed deliverables", "creator initial deliverables"],
+  cr_deliverable_type: ["deliverable type"],
+  cr_month: ["month/year", "month"],
+  cr_concept: ["final concept", "concept"],
+  cr_concept_feedback: ["sys concept feedback", "concept feedback"],
+  cr_notes: ["deliverables/usage"],
+  cr_content_v1: ["draft v1"],
+  cr_caption_v1: ["caption v1"],
+  cr_a8_feedback_v1: ["a8 feedback"],
+  cr_client_feedback_v1: ["sys feedback", "client feedback"],
+  cr_content_v2: ["draft v2"],
+  cr_caption_v2: ["caption v2"],
+  cr_a8_feedback_v2: ["a8 feedback"],
+  cr_client_feedback_v2: ["sys feedback", "client feedback", "sys final feedback"],
+  cr_content_due_date: ["draft date", "due date"],
+  cr_live_date: ["live date"],
+  cr_approved_by_client: ["approved"],
+  pp_contract_link: ["link to contract", "contract link"],
+  ps_agreed_rate: ["confrimed rate", "confirmed rate"],
+  ps_deliverables: ["deliverables/usage"],
+  ps_paid: ["payment complete"],
+  lp_live_date: ["live date"],
+  lp_raw_content_link: ["raw file"],
+  lp_live_link: ["ig post"],
+  lp_ig_spark_code: ["whitelisting code"],
+  lp_tt_spark_code: ["spark code"],
+  lp_utm_link: ["utm link"],
+  lp_discount_code: ["discount code"],
+  lp_total_views: ["total views", "views"],
+  lp_likes: ["likes"],
+  lp_comments: ["comments"],
+  lp_shares: ["shares"],
+  lp_saves: ["saves"],
+  lp_impressions: ["impressions"],
+  lp_reach: ["reach"],
+  lp_emv: ["emv"],
+  lp_engagements: ["engagements"],
+  lp_cpm: ["cpm"],
+};
+
+let _importState = {};
+
+function _guessMapping(headers, fields) {
+  const used = new Set();
+  const lower = headers.map(h => (h || "").toLowerCase().trim());
+  const mapping = {};
+  fields.forEach(f => {
+    const aliases = IMPORT_FIELD_ALIASES[f] || [f.replace(/_/g, " ")];
+    let idx = -1;
+    for (const a of aliases) { idx = lower.findIndex((h,i) => !used.has(i) && h === a); if (idx >= 0) break; }
+    if (idx < 0) { for (const a of aliases) { idx = lower.findIndex((h,i) => !used.has(i) && h.includes(a)); if (idx >= 0) break; } }
+    if (idx >= 0) { mapping[f] = idx; used.add(idx); }
+  });
+  // Live Date is one real-world column that legitimately feeds two different
+  // tables (Content Review + Live Posts) — copy it over rather than leaving
+  // the second one blank just because the first claimed that column index.
+  if (mapping.cr_live_date !== undefined && mapping.lp_live_date === undefined && fields.includes("lp_live_date")) {
+    mapping.lp_live_date = mapping.cr_live_date;
+  }
+  return mapping;
+}
+
+function _renderMappingStep(headers, sampleRows, fields, labels, guessed) {
+  const previewHtml = sampleRows.length ? `
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--dim);margin-bottom:6px">Preview (first ${sampleRows.length} rows)</div>
+      <div style="overflow-x:auto;max-height:140px">
+        <table style="border-collapse:collapse;font-size:11px;white-space:nowrap">
+          <tr>${headers.map(h=>`<th style="padding:3px 8px;background:var(--panel2);text-align:left;border:1px solid var(--border)">${esc(h)}</th>`).join("")}</tr>
+          ${sampleRows.map(r=>`<tr>${r.map(c=>`<td style="padding:3px 8px;border:1px solid var(--border);color:var(--dim);max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(c)}</td>`).join("")}</tr>`).join("")}
+        </table>
+      </div>
+    </div>` : "";
+  return `
+    <p style="color:var(--dim);font-size:12px;margin-bottom:12px">Match each field to a column from the sheet, or leave it as "— Skip —".</p>
+    <div style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px">
+      ${fields.map(f => `
+        <div style="display:flex;align-items:center;gap:10px">
+          <label style="flex:0 0 190px;font-size:12px;color:var(--text)">${esc(labels[f]||f)}</label>
+          <select class="import-map-sel" data-field="${f}" style="flex:1;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px">
+            <option value="-1">— Skip —</option>
+            ${headers.map((h,i)=>`<option value="${i}" ${guessed[f]===i?"selected":""}>${esc(h||("(column "+(i+1)+")"))}</option>`).join("")}
+          </select>
+        </div>`).join("")}
+    </div>
+    ${previewHtml}
+  `;
+}
+
+function _renderDetailMappingStep(headers, sampleRows, guessed) {
+  const previewHtml = sampleRows.length ? `
+    <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--dim);margin-bottom:6px">Preview (first ${sampleRows.length} rows)</div>
+      <div style="overflow-x:auto;max-height:140px">
+        <table style="border-collapse:collapse;font-size:11px;white-space:nowrap">
+          <tr>${headers.map(h=>`<th style="padding:3px 8px;background:var(--panel2);text-align:left;border:1px solid var(--border)">${esc(h)}</th>`).join("")}</tr>
+          ${sampleRows.map(r=>`<tr>${r.map(c=>`<td style="padding:3px 8px;border:1px solid var(--border);color:var(--dim);max-width:160px;overflow:hidden;text-overflow:ellipsis">${esc(c)}</td>`).join("")}</tr>`).join("")}
+        </table>
+      </div>
+    </div>` : "";
+  const fieldRow = (f, label) => `
+    <div style="display:flex;align-items:center;gap:10px">
+      <label style="flex:0 0 260px;font-size:12px;color:var(--text)">${esc(label)}</label>
+      <select class="import-map-sel" data-field="${f}" style="flex:1;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:12px">
+        <option value="-1">— Skip —</option>
+        ${headers.map((h,i)=>`<option value="${i}" ${guessed[f]===i?"selected":""}>${esc(h||("(column "+(i+1)+")"))}</option>`).join("")}
+      </select>
+    </div>`;
+  const nameRow = fieldRow("name", DETAIL_FIELD_LABELS.name);
+  const groupsHtml = DETAIL_FIELD_GROUPS.map(g => `
+    <div style="margin-top:14px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--red);margin-bottom:6px">→ ${esc(g.table)}</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${Object.keys(g.fields).map(f => fieldRow(f, g.fields[f])).join("")}
+      </div>
+    </div>`).join("");
+  return `
+    <p style="color:var(--dim);font-size:12px;margin-bottom:12px">This one tab can feed several different places in the tool — map whatever this sheet actually has, skip the rest.</p>
+    <div style="max-height:380px;overflow-y:auto">
+      ${nameRow}
+      ${groupsHtml}
+    </div>
+    ${previewHtml}
+  `;
+}
+
+function _readMappingFromDOM() {
+  const mapping = {};
+  document.querySelectorAll(".import-map-sel").forEach(sel => {
+    const idx = parseInt(sel.value);
+    if (idx >= 0) mapping[sel.dataset.field] = idx;
+  });
+  return mapping;
+}
+
+function _widenModal() { const box = document.getElementById("modal-box"); if (box) box.style.width = "700px"; }
+
+function importStep0() {
+  _importState = {};
+  openModal("Import from Spreadsheet", `
+    <p style="color:var(--dim);font-size:12px;margin-bottom:12px">Paste the link to the old spreadsheet. It needs to be shared with <strong>agency8-sheets-bot@a8-apify-tool.iam.gserviceaccount.com</strong> first.</p>
+    <div class="fld"><label>Google Sheet Link</label><input id="imp-url" placeholder="https://docs.google.com/spreadsheets/d/..."></div>
+  `, async () => {
+    const url = document.getElementById("imp-url").value.trim();
+    if (!url) return;
+    const btn = document.getElementById("modal-submit");
+    btn.disabled = true; btn.textContent = "Loading…";
+    try {
+      const { sheet_id, tabs } = await apiPost("/api/import/tabs", { sheet_url: url });
+      _importState.sheetId = sheet_id;
+      _importState.tabs = tabs;
+      importStep1();
+    } catch (e) {
+      alert(e.message || "Couldn't load that sheet.");
+      btn.disabled = false; btn.textContent = "Save";
+    }
+  });
+  _widenModal();
+}
+
+function importStep1() {
+  const tabOptions = _importState.tabs.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
+  openModal("Import from Spreadsheet — Choose Tabs", `
+    <div class="fld"><label>Roster tab (creators + rates → Master List + Paid Plan + Payment Status)</label>
+      <select id="imp-roster-tab"><option value="">— Select —</option>${tabOptions}</select>
+    </div>
+    <div class="fld"><label>Detail tab (optional — concepts, drafts, feedback, live dates, contract, performance)</label>
+      <select id="imp-detail-tab"><option value="">— None —</option>${tabOptions}</select>
+    </div>
+  `, async () => {
+    const rosterTab = document.getElementById("imp-roster-tab").value;
+    const detailTab = document.getElementById("imp-detail-tab").value;
+    if (!rosterTab) { alert("Pick a roster tab — that's the minimum needed."); return; }
+    _importState.rosterTab = rosterTab;
+    _importState.detailTab = detailTab || null;
+    const btn = document.getElementById("modal-submit");
+    btn.disabled = true; btn.textContent = "Loading…";
+    try {
+      const preview = await apiPost("/api/import/preview", { sheet_id: _importState.sheetId, tab: rosterTab });
+      _importState.rosterPreview = preview;
+      importStep2();
+    } catch (e) {
+      alert(e.message || "Couldn't read that tab.");
+      btn.disabled = false; btn.textContent = "Save";
+    }
+  });
+  _widenModal();
+}
+
+function importStep2() {
+  const { headers, sample_rows, total_rows } = _importState.rosterPreview;
+  const guessed = _guessMapping(headers, Object.keys(ROSTER_FIELD_LABELS));
+  openModal(`Map Roster Fields (${total_rows} rows)`,
+    _renderMappingStep(headers, sample_rows, Object.keys(ROSTER_FIELD_LABELS), ROSTER_FIELD_LABELS, guessed),
+    async () => {
+      _importState.rosterMapping = _readMappingFromDOM();
+      if (_importState.rosterMapping.name === undefined) { alert("Name has to be mapped to a column."); return; }
+      if (!_importState.detailTab) { importStep4(); return; }
+      const btn = document.getElementById("modal-submit");
+      btn.disabled = true; btn.textContent = "Loading…";
+      try {
+        const preview = await apiPost("/api/import/preview", { sheet_id: _importState.sheetId, tab: _importState.detailTab });
+        _importState.detailPreview = preview;
+        importStep3();
+      } catch (e) {
+        alert(e.message || "Couldn't read that tab.");
+        btn.disabled = false; btn.textContent = "Save";
+      }
+    });
+  _widenModal();
+}
+
+function importStep3() {
+  const { headers, sample_rows, total_rows } = _importState.detailPreview;
+  const guessed = _guessMapping(headers, Object.keys(DETAIL_FIELD_LABELS));
+  openModal(`Map Detail Fields (${total_rows} rows)`,
+    _renderDetailMappingStep(headers, sample_rows, guessed),
+    () => {
+      _importState.detailMapping = _readMappingFromDOM();
+      if (_importState.detailMapping.name === undefined) { alert("Name has to be mapped to a column — that's how rows get matched to creators."); return; }
+      importStep4();
+    });
+  _widenModal();
+}
+
+function importStep4() {
+  const rosterCount = _importState.rosterPreview.total_rows;
+  const detailLine = _importState.detailTab
+    ? `<li>Also reading <strong>${_importState.detailPreview.total_rows}</strong> rows from "${esc(_importState.detailTab)}", matched to creators by name, fanning out into whichever of Content Review / Paid Plan / Payment Status / Live Posts you mapped fields for.</li>`
+    : "";
+  openModal("Confirm Import", `
+    <ul style="font-size:13px;line-height:1.7;padding-left:18px;margin:0">
+      <li>Importing <strong>${rosterCount}</strong> rows from "${esc(_importState.rosterTab)}" into Master List${_importState.rosterMapping.landed_rate!==undefined?" + Paid Plan + Payment Status":""}.</li>
+      ${detailLine}
+      <li>Creators are matched by name — an existing creator with the same name gets updated, not duplicated.</li>
+    </ul>
+  `, async () => {
+    const btn = document.getElementById("modal-submit");
+    btn.disabled = true; btn.textContent = "Importing…";
+    try {
+      const result = await apiPost("/api/import/execute", {
+        sheet_id: _importState.sheetId,
+        roster_tab: _importState.rosterTab, roster_mapping: _importState.rosterMapping,
+        detail_tab: _importState.detailTab, detail_mapping: _importState.detailMapping,
+      });
+      importStep5(result);
+    } catch (e) {
+      alert(e.message || "Import failed.");
+      btn.disabled = false; btn.textContent = "Save";
+    }
+  });
+  document.getElementById("modal-submit").textContent = "Import Now";
+}
+
+function importStep5(result) {
+  const skipped = result.detail_skipped_no_match || [];
+  openModal("Import Complete", `
+    <ul style="font-size:13px;line-height:1.8;padding-left:18px;margin:0">
+      <li><strong>${result.creators_created}</strong> creators created, <strong>${result.creators_updated}</strong> updated</li>
+      <li><strong>${result.paid_plan_created}</strong> Paid Plan entries created, <strong>${result.paid_plan_updated}</strong> updated</li>
+      <li><strong>${result.payment_status_created}</strong> Payment Status entries created, <strong>${result.payment_status_updated}</strong> updated</li>
+      <li><strong>${result.content_review_created}</strong> Content Review entries created</li>
+      <li><strong>${result.live_posts_created}</strong> Live Posts entries created</li>
+      ${skipped.length ? `<li style="color:var(--red)">${skipped.length} detail row(s) skipped — no matching creator name: ${skipped.slice(0,10).map(esc).join(", ")}${skipped.length>10?"…":""}</li>` : ""}
+    </ul>
+  `, () => { closeModal(); });
+  document.getElementById("modal-submit").textContent = "Done";
+  document.getElementById("modal-submit").onclick = () => { closeModal(); loadMasterList(); };
+}
+
+document.getElementById("btn-import-sheet")?.addEventListener("click", importStep0);
+
 async function loadMasterList() {
   allInfluencers = [];  // reset cache
   refreshCampaignDatalist();
@@ -317,10 +664,11 @@ async function loadMasterList() {
   if (search)   rows = rows.filter(r => `${r.name} ${r.ig_handle} ${r.tt_handle} ${r.vertical} ${r.campaign||""}`.toLowerCase().includes(search));
   if (tier)     rows = rows.filter(r => r.tier === tier);
   if (gender)   rows = rows.filter(r => r.gender === gender);
-  if (campaign) rows = rows.filter(r => r.campaign === campaign);
+  if (campaign) rows = rows.filter(r => (r.campaign||"").split(",").map(s=>s.trim()).includes(campaign));
 
-  // Populate campaign filter options dynamically
-  const campaigns = [...new Set(data.map(r => r.campaign).filter(Boolean))].sort();
+  // Populate campaign filter options dynamically — a creator can belong to
+  // multiple comma-joined campaigns, so split each row out before deduping.
+  const campaigns = [...new Set(data.flatMap(r => (r.campaign||"").split(",").map(s=>s.trim()).filter(Boolean)))].sort();
   const campSel = $("ml-filter-campaign");
   if (campSel) {
     const cur = campSel.value;
@@ -554,8 +902,8 @@ function renderTally() {
   // A creator with multiple verticals (comma-joined) fans out into one group
   // membership per vertical, rather than one combined "A, B" bucket.
   const valuesFor = (r, d) => {
-    if (d === "vertical") {
-      const raw = r.vertical || r.archetype || "";
+    if (d === "vertical" || d === "campaign") {
+      const raw = d === "vertical" ? (r.vertical || r.archetype || "") : (r.campaign || "");
       const parts = String(raw).split(",").map(s => s.trim()).filter(Boolean);
       return parts.length ? parts : ["—"];
     }
@@ -671,7 +1019,10 @@ function ppTallyValuesOf(r, d) {
     return parts.length ? parts : ["—"];
   }
   if (d === "month_live") return [ppCrMonthMap[(r.influencer?.ig_handle||"").toLowerCase()] || "—"];
-  if (d === "campaign")   return [r.influencer?.campaign || "—"];
+  if (d === "campaign") {
+    const parts = String(r.influencer?.campaign || "").split(",").map(s => s.trim()).filter(Boolean);
+    return parts.length ? parts : ["—"];
+  }
   if (d === "status")     return [r.status || "—"];
   if (d === "tier")       return [r.influencer?.tier || "—"];
   if (d === "collab")     return [ppRowHasCollab(r) ? "Yes" : "No"];
@@ -935,7 +1286,7 @@ const crPivot = createPivotTable({
     return "—";
   },
   nameOf: r => r.influencer?.name,
-  multiValueDims: ["vertical"],
+  multiValueDims: ["vertical", "campaign"],
 });
 
 const LP_TALLY_DIMS = {
@@ -989,11 +1340,13 @@ function calcTier(igFol, ttFol) {
   return "Mega";
 }
 
-const VERTICAL_OPTIONS = [
-  "Health / Wellness", "Beauty / Skincare", "Fashion / Lifestyle", "Cool Guys",
-  "Models", "Parents", "Student", "Travel", "Creatives", "Food / Bev",
-  "Professionals", "Fitness",
-];
+const VERTICAL_OPTIONS = CLIENT_CTX === "sys"
+  ? ["Performance", "Wellness", "Design / Creative"]
+  : [
+      "Health / Wellness", "Beauty / Skincare", "Fashion / Lifestyle", "Cool Guys",
+      "Models", "Parents", "Student", "Travel", "Creatives", "Food / Bev",
+      "Professionals", "Fitness",
+    ];
 
 function openInfluencerModal(existing) {
   refreshCampaignDatalist(); // ensure campaign options are fresh
@@ -1071,12 +1424,12 @@ function openInfluencerModal(existing) {
       <div id="camp-panel" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--panel);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);z-index:10001;padding:10px">
         <input id="camp-search" placeholder="Search or type new…" autocomplete="off"
           oninput="filterCampaignChips(this.value)"
-          onkeydown="if(event.key==='Enter'&&this.value.trim()){selectCampaign(this.value.trim());}"
+          onkeydown="if(event.key==='Enter'&&this.value.trim()){toggleCampaign(this.value.trim());this.value='';filterCampaignChips('');}"
           style="width:100%;border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;background:var(--panel2);margin-bottom:8px">
-        <div style="font-size:10px;color:var(--dim);margin-bottom:6px">Press Enter to add a new campaign</div>
+        <div style="font-size:10px;color:var(--dim);margin-bottom:6px">Click to select multiple — press Enter to add a new campaign</div>
         <div id="camp-chips" style="display:flex;flex-wrap:wrap;gap:6px;max-height:180px;overflow-y:auto"></div>
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-          <button onclick="selectCampaign('')" style="font-size:11px;color:var(--dim);background:none;border:none;cursor:pointer;padding:0">✕ Clear</button>
+          <button onclick="clearCampaigns()" style="font-size:11px;color:var(--dim);background:none;border:none;cursor:pointer;padding:0">✕ Clear</button>
         </div>
       </div>
       <input type="hidden" id="mf-campaign" value="${esc(e.campaign||"")}">
@@ -1144,7 +1497,7 @@ function openInfluencerModal(existing) {
 }
 
 // ── 2. Outreach ───────────────────────────────────────────────────────────────
-const OUTREACH_STATUSES = ["Not Outreached","Outreached","Followed Up 1x","Followed Up 2x","Interested","Passed","Not Responsive","Conflicted Out"];
+const OUTREACH_STATUSES = ["Not Outreached","Outreached","Followed Up 1x","Followed Up 2x","Confirmed","Passed","Not Responsive","Conflicted Out"];
 
 async function loadOutreach() {
   // Always fetch all paid_plan records (not just in_paid_plan=true) so deliverables persist
@@ -2157,7 +2510,7 @@ async function loadContentReview() {
   });
 
   const iS = "background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 6px;font-size:11px;width:100%";
-  const NCOLS = 27;
+  const NCOLS = 29;
 
   $("cr-body").innerHTML = Object.values(groups).length ? Object.values(groups).map(group => {
     const inf = group.inf;
@@ -2211,6 +2564,7 @@ async function loadContentReview() {
       </td>
       <td><textarea class="cr-cap1 auto-expand" data-id="${r.id}" placeholder="Caption" style="${iS};min-width:90px">${esc(r.caption_v1||"")}</textarea></td>
       <td><textarea class="cr-af1 auto-expand" data-id="${r.id}" placeholder="A8 notes" style="${iS};min-width:90px">${esc(r.a8_feedback_v1||"")}</textarea></td>
+      <td class="sys-col"><textarea class="cr-lf1 auto-expand" data-id="${r.id}" placeholder="LEMON feedback" style="${iS};min-width:100px">${esc(r.lemon_feedback_v1||"")}</textarea></td>
       <td style="background:rgba(202,1,0,.04)"><textarea class="cr-cf1 auto-expand" data-id="${r.id}" placeholder="Client feedback" style="${iS};min-width:110px">${esc(r.client_feedback_v1||"")}</textarea></td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
@@ -2220,6 +2574,7 @@ async function loadContentReview() {
       </td>
       <td><textarea class="cr-cap2 auto-expand" data-id="${r.id}" placeholder="Caption" style="${iS};min-width:90px">${esc(r.caption_v2||"")}</textarea></td>
       <td><textarea class="cr-af2 auto-expand" data-id="${r.id}" placeholder="A8 notes" style="${iS};min-width:90px">${esc(r.a8_feedback_v2||"")}</textarea></td>
+      <td class="sys-col"><textarea class="cr-lf2 auto-expand" data-id="${r.id}" placeholder="LEMON feedback" style="${iS};min-width:100px">${esc(r.lemon_feedback_v2||"")}</textarea></td>
       <td style="background:rgba(202,1,0,.04)"><textarea class="cr-cf2 auto-expand" data-id="${r.id}" placeholder="Client feedback" style="${iS};min-width:110px">${esc(r.client_feedback_v2||"")}</textarea></td>
       <td style="text-align:center">
         <input type="checkbox" class="cr-approved-chk" data-id="${r.id}" data-inf-id="${r.influencer_id}" data-live="${r.live_date||""}" data-due="${r.content_due_date||""}" data-del="${esc(r.deliverable_type||"")}" ${r.approved_by_client?"checked":""} style="accent-color:var(--green);width:16px;height:16px;cursor:pointer">
@@ -2254,10 +2609,12 @@ async function loadContentReview() {
   wire("cr-cv1",         "content_v1");
   wire("cr-cap1",        "caption_v1",       "blur");
   wire("cr-af1",         "a8_feedback_v1",   "blur");
+  wire("cr-lf1",         "lemon_feedback_v1","blur");
   wire("cr-cf1",         "client_feedback_v1","blur");
   wire("cr-cv2",         "content_v2");
   wire("cr-cap2",        "caption_v2",       "blur");
   wire("cr-af2",         "a8_feedback_v2",   "blur");
+  wire("cr-lf2",         "lemon_feedback_v2","blur");
   wire("cr-cf2",         "client_feedback_v2","blur");
 
   // Approved checkbox — Content Calendar reads approved_by_client directly, no sync needed
@@ -2823,6 +3180,7 @@ async function openLivePostModal(existing) {
 
 // ── 7. Payment Status ─────────────────────────────────────────────────────────
 async function loadPayments() {
+  loadLumanuPayables();
   const data = await apiGet("/api/payment_status");
   const filter = $("pay-filter")?.value;
   let rows = data;
@@ -2842,11 +3200,26 @@ async function loadPayments() {
     <td>${chk(r.id,"proper_invoice",r.proper_invoice)}</td>
     <td>${chk(r.id,"added_to_quickbooks",r.added_to_quickbooks)}</td>
     <td>${esc(r.status||"")}</td>
+    <td>${r.lumanu_payable_id
+        ? `<span class="badge badge-locked">✓ Sent</span>`
+        : `<button class="btn-sec btn-send-lumanu" data-id="${r.id}" style="font-size:11px;padding:4px 10px">Send to Lumanu</button>`}</td>
     <td><button class="btn-icon btn-edit-pay" data-id="${r.id}">✏</button></td>
-  </tr>`).join("") : `<tr><td colspan="12" class="empty-cell">No payment entries yet.</td></tr>`;
+  </tr>`).join("") : `<tr><td colspan="13" class="empty-cell">No payment entries yet.</td></tr>`;
 
   document.querySelectorAll(".btn-edit-pay").forEach(b=>
     b.addEventListener("click",()=>{ const row=rows.find(r=>String(r.id)===b.dataset.id); if(row) openPayModal(row); })
+  );
+  document.querySelectorAll(".btn-send-lumanu").forEach(b=>
+    b.addEventListener("click", async () => {
+      b.disabled = true; b.textContent = "Sending…";
+      try {
+        await apiPost("/api/lumanu/payables/create", {payment_status_id: parseInt(b.dataset.id)});
+        loadPayments();
+      } catch (e) {
+        alert(e.message || "Couldn't send to Lumanu.");
+        b.disabled = false; b.textContent = "Send to Lumanu";
+      }
+    })
   );
 }
 
@@ -2887,6 +3260,44 @@ async function openPayModal(existing) {
     else await apiPost("/api/payment_status", payload);
     closeModal(); loadPayments();
   });
+}
+
+async function loadLumanuPayables() {
+  const body  = $("lumanu-body");
+  const count = $("lumanu-count");
+  if (!body) return;
+  let data;
+  try {
+    data = await apiGet("/api/lumanu/payables");
+  } catch {
+    body.innerHTML = `<tr><td colspan="6" class="empty-cell">Couldn't load Lumanu payments.</td></tr>`;
+    return;
+  }
+  if (count) count.textContent = data.length ? `(${data.length})` : "";
+  if (!data.length) {
+    body.innerHTML = `<tr><td colspan="6" class="empty-cell">No matching Lumanu payables yet.</td></tr>`;
+    return;
+  }
+  const badgeCls = s => s === "paid" ? "badge-locked" : s === "approved" ? "badge-offer" : s === "canceled" ? "badge-ext" : "badge-negotiations";
+  const lumanuDate = s => s ? new Date(s).toLocaleDateString("en-US", {month:"short",day:"numeric",year:"numeric"}) : "—";
+  body.innerHTML = data.map(p => `<tr>
+    <td>${esc(p.description || "")}</td>
+    <td>${esc(p.vendor_email || "")}</td>
+    <td>${fmtD(p.amount)}</td>
+    <td>${lumanuDate(p.due_date)}</td>
+    <td><span class="badge ${badgeCls(p.status)}">${esc(p.status || "")}</span></td>
+    <td><button class="btn-icon btn-lumanu-invoice" data-id="${p.id}">Invoice</button></td>
+  </tr>`).join("");
+  document.querySelectorAll(".btn-lumanu-invoice").forEach(b =>
+    b.addEventListener("click", async () => {
+      b.disabled = true; b.textContent = "…";
+      try {
+        const { url } = await apiGet(`/api/lumanu/payables/${b.dataset.id}/invoice`);
+        if (url) window.open(url, "_blank");
+      } catch { alert("Couldn't load invoice."); }
+      b.disabled = false; b.textContent = "Invoice";
+    })
+  );
 }
 
 // ── Budget Tracker ─────────────────────────────────────────────────────────────
@@ -3018,6 +3429,8 @@ window.modalDoSave = async function() {
 };
 
 function openModal(title, bodyHtml, onSubmit) {
+  const box = document.getElementById("modal-box");
+  if (box) box.style.width = "";  // reset any wizard-specific width override
   document.getElementById("modal-title").textContent = title;
   document.getElementById("modal-body").innerHTML = bodyHtml + `
     <div class="modal-footer">

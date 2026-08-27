@@ -157,6 +157,9 @@ a:hover { text-decoration: underline; }
 /* ── INT/EXT column visibility ── */
 #ml-table.ml-int .ext-col { display: none; }
 #ml-table.ml-ext .int-col { display: none; }
+
+/* ── SYS-only columns (e.g. LEMON Feedback in Content Review) ── */
+#cr-table:not(.cr-sys) .sys-col { display: none; }
 .ml-rejected td { background: rgba(202,1,0,.08) !important; }
 .badge-rejected { background: #2d1a00; color: #f59e0b; }
 

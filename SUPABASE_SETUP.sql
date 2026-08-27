@@ -231,3 +231,38 @@ alter table public.paid_influencers add column if not exists landed_rate numeric
 -- Plain link to the signed agreement (e.g. DocuSign) per creator in Paid Plan —
 -- decided on the call to keep this a link field, not DocuSign auto-fill.
 alter table public.paid_plan add column if not exists contract_link text;
+
+-- ── LEMON Feedback (2026-08-26) ────────────────────────────────────────────────
+-- SYS-only column in Content Review, shown right before Client Feedback V1/V2
+-- (hidden client-side for every other client). Internal-only — not in the
+-- client-portal PATCH whitelist, so external clients can't edit it.
+-- ── Live Posts performance metrics (2026-08-27) ────────────────────────────────
+-- Added for the legacy-spreadsheet import — old sheets track Impressions/Reach/
+-- EMV/Engagements/CPM per live post, which had no matching column before this.
+alter table public.live_posts add column if not exists impressions numeric;
+alter table public.live_posts add column if not exists reach numeric;
+alter table public.live_posts add column if not exists emv numeric;
+alter table public.live_posts add column if not exists engagements numeric;
+alter table public.live_posts add column if not exists cpm numeric;
+
+alter table public.content_review add column if not exists lemon_feedback_v1 text;
+alter table public.content_review add column if not exists lemon_feedback_v2 text;
+
+-- ── Outreach status rename: "Interested" → "Confirmed" (2026-08-26) ───────────
+-- Renamed across every client per Sophie's request. Existing rows updated so
+-- they don't silently lose their selection (the dropdown option itself was
+-- renamed, not added alongside).
+update public.paid_influencers set outreach_status = 'Confirmed' where outreach_status = 'Interested';
+
+-- ── Lumanu payables (2026-08-27) ───────────────────────────────────────────────
+-- "Send to Lumanu" on Payment Status creates a draft (unapproved) payable —
+-- never approves or pays it, that still happens in Lumanu itself. Tracks the
+-- created payable's ID so a row can't accidentally be sent twice.
+alter table public.payment_status add column if not exists lumanu_payable_id text;
+
+-- GL Account is a QuickBooks-sync classification Lumanu requires per payable —
+-- it's per-client accounting data, so it lives on the client registry, same as
+-- archive_workspace_id. NULL = "Send to Lumanu" stays disabled for that client
+-- until someone gets the correct value from whoever manages QuickBooks.
+alter table public.clients add column if not exists lumanu_gl_account text;
+update public.clients set lumanu_gl_account = 'Customer Deposit - RiverSide (Made Good)' where slug = 'madegood';

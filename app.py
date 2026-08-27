@@ -5,6 +5,7 @@ MadeGood Paid System — FastAPI backend
 import os
 import re
 import json
+import time
 import httpx
 from anthropic import Anthropic
 from contextvars import ContextVar
@@ -15,6 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from typing import Optional, Any
+from google.oauth2 import service_account
+from googleapiclient.discovery import build as gbuild
+from dateutil import parser as dateparser
 import config
 
 app = FastAPI(title="Agency 8 Paid System")
@@ -1004,6 +1008,476 @@ async def add_payment_status(req: dict):
 async def update_payment_status(id: int, req: dict):
     check_auth(req.pop("password", None))
     return await sb_patch("payment_status", id, req)
+
+# ── Legacy spreadsheet import ──────────────────────────────────────────────────
+# Lets a teammate bring an old paid-creator spreadsheet (pre-dating this tool)
+# into Master List / Payment Status / Content Review, with a manual column-
+# mapping step rather than guessing — every client's old sheet has a different
+# layout, so there's no reliable auto-detect. Read-only against the source
+# sheet; every write is an explicit create/update the caller mapped by hand.
+_sheets_client = None
+
+def sheets():
+    global _sheets_client
+    if _sheets_client is None:
+        if config.GOOGLE_CREDENTIALS_JSON:
+            info = json.loads(config.GOOGLE_CREDENTIALS_JSON)
+            creds = service_account.Credentials.from_service_account_info(
+                info, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"])
+        else:
+            creds = service_account.Credentials.from_service_account_file(
+                config.GOOGLE_CREDENTIALS_FILE, scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"])
+        _sheets_client = gbuild("sheets", "v4", credentials=creds)
+    return _sheets_client
+
+def _extract_sheet_id(url_or_id: str) -> str:
+    m = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", url_or_id)
+    return m.group(1) if m else url_or_id.strip()
+
+def _num(s):
+    if not s:
+        return None
+    s = re.sub(r"[^0-9.\-]", "", str(s))
+    try:
+        return float(s) if s not in ("", "-", ".") else None
+    except ValueError:
+        return None
+
+def _parse_date(s):
+    if not s or not str(s).strip():
+        return None
+    try:
+        return dateparser.parse(str(s), fuzzy=True).date().isoformat()
+    except (ValueError, OverflowError):
+        return None
+
+async def _read_tab_rows(sheet_id: str, tab: str) -> list:
+    resp = sheets().spreadsheets().values().get(
+        spreadsheetId=sheet_id, range=f"'{tab}'!A1:AZ2000").execute()
+    values = resp.get("values", [])
+    if not values:
+        return []
+    width = len(values[0])
+    return [r + [""] * (width - len(r)) for r in values[1:]]
+
+def _cell(row: list, mapping: dict, field: str) -> str:
+    idx = mapping.get(field)
+    if idx is None or idx < 0 or idx >= len(row):
+        return ""
+    return (row[idx] or "").strip()
+
+ROSTER_FIELDS = [
+    "name", "ig_handle", "tt_handle", "ig_followers", "tt_followers", "tier",
+    "gender", "vertical", "location", "email", "campaign", "outreach_notes",
+    "quoted_rate", "landed_rate", "deliverables",
+]
+
+# Everything from the "detail" tab (Content Review / Live Posts history) — one
+# combined field list because on a real historical sheet these all live on the
+# same physical tab. Each entry is (destination_table, destination_column).
+# Grouped in the UI by table so it's clear where each field actually lands.
+DETAIL_FIELD_DEST = {
+    # → content_review
+    "cr_deliverable_type":   ("content_review", "deliverable_type"),
+    "cr_month":              ("content_review", "month"),
+    "cr_concept":             ("content_review", "concept"),
+    "cr_concept_feedback":    ("content_review", "concept_feedback"),
+    "cr_notes":               ("content_review", "notes"),
+    "cr_content_v1":          ("content_review", "content_v1"),
+    "cr_caption_v1":          ("content_review", "caption_v1"),
+    "cr_a8_feedback_v1":      ("content_review", "a8_feedback_v1"),
+    "cr_client_feedback_v1":  ("content_review", "client_feedback_v1"),
+    "cr_content_v2":          ("content_review", "content_v2"),
+    "cr_caption_v2":          ("content_review", "caption_v2"),
+    "cr_a8_feedback_v2":      ("content_review", "a8_feedback_v2"),
+    "cr_client_feedback_v2":  ("content_review", "client_feedback_v2"),
+    "cr_content_due_date":    ("content_review", "content_due_date"),
+    "cr_live_date":           ("content_review", "live_date"),
+    "cr_approved_by_client":  ("content_review", "approved_by_client"),
+    # → paid_plan
+    "pp_contract_link":       ("paid_plan", "contract_link"),
+    # → payment_status (updates the row created during roster import, or
+    #   creates one if the roster tab didn't have a rate for this creator)
+    "ps_agreed_rate":         ("payment_status", "agreed_rate"),
+    "ps_deliverables":        ("payment_status", "deliverables"),
+    "ps_paid":                ("payment_status", "paid"),
+    # → live_posts (one row per detail-tab row, only if any lp_ field is filled)
+    "lp_live_date":           ("live_posts", "live_date"),
+    "lp_raw_content_link":    ("live_posts", "raw_content_link"),
+    "lp_live_link":           ("live_posts", "live_link"),
+    "lp_ig_spark_code":       ("live_posts", "ig_spark_code"),
+    "lp_tt_spark_code":       ("live_posts", "tt_spark_code"),
+    "lp_utm_link":            ("live_posts", "utm_link"),
+    "lp_discount_code":       ("live_posts", "discount_code"),
+    "lp_total_views":         ("live_posts", "total_views"),
+    "lp_likes":               ("live_posts", "likes"),
+    "lp_comments":            ("live_posts", "comments"),
+    "lp_shares":              ("live_posts", "shares"),
+    "lp_saves":               ("live_posts", "saves"),
+    "lp_impressions":         ("live_posts", "impressions"),
+    "lp_reach":               ("live_posts", "reach"),
+    "lp_emv":                 ("live_posts", "emv"),
+    "lp_engagements":         ("live_posts", "engagements"),
+    "lp_cpm":                 ("live_posts", "cpm"),
+}
+DETAIL_FIELDS = ["name"] + list(DETAIL_FIELD_DEST.keys())
+DETAIL_DATE_FIELDS = {"cr_content_due_date", "cr_live_date", "lp_live_date"}
+DETAIL_BOOL_FIELDS = {"cr_approved_by_client", "ps_paid"}
+DETAIL_NUM_FIELDS = {
+    "ps_agreed_rate", "lp_total_views", "lp_likes", "lp_comments", "lp_shares", "lp_saves",
+    "lp_impressions", "lp_reach", "lp_emv", "lp_engagements", "lp_cpm",
+}
+
+class ImportSheetBody(BaseModel):
+    sheet_url: str
+    password: Optional[str] = None
+
+@app.post("/api/import/tabs")
+async def import_tabs(body: ImportSheetBody):
+    check_auth(body.password)
+    sid = _extract_sheet_id(body.sheet_url)
+    try:
+        meta = sheets().spreadsheets().get(spreadsheetId=sid, fields="sheets(properties(title))").execute()
+    except Exception as e:
+        raise HTTPException(status_code=400,
+            detail=f"Couldn't open that sheet — check the link, and make sure it's shared with agency8-sheets-bot@a8-apify-tool.iam.gserviceaccount.com. ({e})")
+    tabs = [s["properties"]["title"] for s in meta.get("sheets", [])]
+    return {"sheet_id": sid, "tabs": tabs}
+
+class ImportPreviewBody(BaseModel):
+    sheet_id: str
+    tab: str
+    password: Optional[str] = None
+
+@app.post("/api/import/preview")
+async def import_preview(body: ImportPreviewBody):
+    check_auth(body.password)
+    try:
+        rows = await _read_tab_rows(body.sheet_id, body.tab)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Couldn't read that tab: {e}")
+    header_resp = sheets().spreadsheets().values().get(
+        spreadsheetId=body.sheet_id, range=f"'{body.tab}'!A1:AZ1").execute()
+    headers = header_resp.get("values", [[]])[0] if header_resp.get("values") else []
+    non_blank = [r for r in rows if any(c.strip() for c in r)]
+    return {"headers": headers, "sample_rows": non_blank[:5], "total_rows": len(non_blank)}
+
+class ImportExecuteBody(BaseModel):
+    sheet_id: str
+    roster_tab: Optional[str] = None
+    roster_mapping: Optional[dict] = None    # {field: column_index}
+    detail_tab: Optional[str] = None
+    detail_mapping: Optional[dict] = None    # {DETAIL_FIELD_DEST key: column_index}
+    password: Optional[str] = None
+
+def _detail_value(row, mapping, field):
+    raw = _cell(row, mapping, field)
+    if not raw:
+        return None
+    if field in DETAIL_DATE_FIELDS:
+        return _parse_date(raw)
+    if field in DETAIL_BOOL_FIELDS:
+        return raw.strip().lower() in ("yes", "true", "y", "✓", "1", "complete", "completed", "approved", "paid")
+    if field in DETAIL_NUM_FIELDS:
+        return _num(raw)
+    return raw
+
+@app.post("/api/import/execute")
+async def import_execute(body: ImportExecuteBody):
+    check_auth(body.password)
+    client = current_client.get()
+    result = {
+        "creators_created": 0, "creators_updated": 0,
+        "payment_status_created": 0, "payment_status_updated": 0,
+        "paid_plan_created": 0, "paid_plan_updated": 0,
+        "content_review_created": 0, "live_posts_created": 0,
+        "detail_skipped_no_match": [],
+    }
+
+    existing = await sb_get("paid_influencers", f"?client=eq.{client}&select=id,name")
+    name_to_id = {e["name"].strip().lower(): e["id"] for e in existing if e.get("name")}
+    # Tracks the payment_status / paid_plan row created for each creator during the
+    # roster pass, so the detail pass can update the SAME row instead of creating a
+    # second one when both tabs carry rate/deliverables data for the same person.
+    inf_to_payment_status_id = {}
+    inf_to_paid_plan_id = {}
+
+    if body.roster_tab and body.roster_mapping:
+        try:
+            rows = await _read_tab_rows(body.sheet_id, body.roster_tab)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Couldn't read roster tab: {e}")
+        for row in rows:
+            name = _cell(row, body.roster_mapping, "name")
+            if not name:
+                continue
+            ig_followers = _num(_cell(row, body.roster_mapping, "ig_followers"))
+            tt_followers = _num(_cell(row, body.roster_mapping, "tt_followers"))
+            payload = {
+                "name": name,
+                "ig_handle": _cell(row, body.roster_mapping, "ig_handle").lstrip("@") or None,
+                "tt_handle": _cell(row, body.roster_mapping, "tt_handle").lstrip("@") or None,
+                "ig_followers": ig_followers,
+                "tt_followers": tt_followers,
+                "total_followers": (ig_followers or 0) + (tt_followers or 0) if (ig_followers or tt_followers) else None,
+                "tier": _cell(row, body.roster_mapping, "tier") or None,
+                "gender": _cell(row, body.roster_mapping, "gender") or None,
+                "vertical": _cell(row, body.roster_mapping, "vertical") or None,
+                "location": _cell(row, body.roster_mapping, "location") or None,
+                "email": _cell(row, body.roster_mapping, "email") or None,
+                "campaign": _cell(row, body.roster_mapping, "campaign") or None,
+                "outreach_notes": _cell(row, body.roster_mapping, "outreach_notes") or None,
+                "quoted_rate": _cell(row, body.roster_mapping, "quoted_rate") or None,
+                "landed_rate": _num(_cell(row, body.roster_mapping, "landed_rate")),
+            }
+            payload = {k: v for k, v in payload.items() if v is not None}
+            key = name.strip().lower()
+            if key in name_to_id:
+                inf_id = name_to_id[key]
+                await sb_patch("paid_influencers", inf_id, payload)
+                result["creators_updated"] += 1
+            else:
+                payload.update({"client": client, "list_type": "INT", "in_paid_plan": True})
+                created = await sb_post("paid_influencers", payload)
+                inf_id = created.get("id")
+                name_to_id[key] = inf_id
+                result["creators_created"] += 1
+
+            rate = _num(_cell(row, body.roster_mapping, "landed_rate"))
+            deliverables = _cell(row, body.roster_mapping, "deliverables")
+            if rate and inf_id:
+                ps = await sb_post("payment_status", {
+                    "client": client, "influencer_id": inf_id,
+                    "agreed_rate": rate, "deliverables": deliverables or None,
+                    "status": "Imported from spreadsheet",
+                })
+                inf_to_payment_status_id[inf_id] = ps.get("id")
+                result["payment_status_created"] += 1
+                pp = await sb_post("paid_plan", {
+                    "client": client, "influencer_id": inf_id,
+                    "status": "Locked", "accepted_offer": rate,
+                    "campaign": _cell(row, body.roster_mapping, "campaign") or None,
+                    "notes": deliverables or None,
+                })
+                inf_to_paid_plan_id[inf_id] = pp.get("id")
+                result["paid_plan_created"] += 1
+
+    if body.detail_tab and body.detail_mapping:
+        try:
+            rows = await _read_tab_rows(body.sheet_id, body.detail_tab)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Couldn't read the detail tab: {e}")
+        for row in rows:
+            name = _cell(row, body.detail_mapping, "name")
+            if not name:
+                continue
+            inf_id = name_to_id.get(name.strip().lower())
+            if not inf_id:
+                result["detail_skipped_no_match"].append(name)
+                continue
+
+            cr_payload, ps_payload, lp_payload, contract_link = {}, {}, {}, None
+            for field, (table, col) in DETAIL_FIELD_DEST.items():
+                val = _detail_value(row, body.detail_mapping, field)
+                if val is None:
+                    continue
+                if table == "content_review": cr_payload[col] = val
+                elif table == "payment_status": ps_payload[col] = val
+                elif table == "live_posts": lp_payload[col] = val
+                elif table == "paid_plan": contract_link = val
+
+            if cr_payload:
+                await sb_post("content_review", {"client": client, "influencer_id": inf_id, **cr_payload})
+                result["content_review_created"] += 1
+
+            if ps_payload:
+                existing_ps_id = inf_to_payment_status_id.get(inf_id)
+                if existing_ps_id:
+                    await sb_patch("payment_status", existing_ps_id, ps_payload)
+                    result["payment_status_updated"] += 1
+                else:
+                    ps = await sb_post("payment_status", {"client": client, "influencer_id": inf_id, **ps_payload})
+                    inf_to_payment_status_id[inf_id] = ps.get("id")
+                    result["payment_status_created"] += 1
+
+            if contract_link:
+                existing_pp_id = inf_to_paid_plan_id.get(inf_id)
+                if existing_pp_id:
+                    await sb_patch("paid_plan", existing_pp_id, {"contract_link": contract_link})
+                    result["paid_plan_updated"] += 1
+                else:
+                    pp = await sb_post("paid_plan", {
+                        "client": client, "influencer_id": inf_id,
+                        "status": "Locked", "contract_link": contract_link,
+                    })
+                    inf_to_paid_plan_id[inf_id] = pp.get("id")
+                    result["paid_plan_created"] += 1
+
+            if lp_payload:
+                await sb_post("live_posts", {"client": client, "influencer_id": inf_id, **lp_payload})
+                result["live_posts_created"] += 1
+
+    return result
+
+# ── Lumanu (read-only payables sync) ──────────────────────────────────────────
+# Agency 8 has one Lumanu workspace that pays every client's creators. There's
+# no per-client field on a payable, so a client's payables are found by matching
+# the client's display name / creator emails / IG handles against each payable's
+# description and vendor_email. Read-only: never creates, approves, or funds
+# anything in Lumanu — just surfaces what's already there.
+_lumanu_token_cache = {"token": None, "expires_at": 0}
+_lumanu_payables_cache = {"data": None, "at": 0}
+_LUMANU_CACHE_TTL = 60
+
+async def _lumanu_token() -> str:
+    if _lumanu_token_cache["token"] and time.time() < _lumanu_token_cache["expires_at"] - 60:
+        return _lumanu_token_cache["token"]
+    async with httpx.AsyncClient() as c:
+        r = await c.post(config.LUMANU_TOKEN_URL, json={
+            "grant_type": "client_credentials",
+            "client_id": config.LUMANU_CLIENT_ID,
+            "client_secret": config.LUMANU_CLIENT_SECRET,
+            "audience": config.LUMANU_AUDIENCE,
+        }, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+    _lumanu_token_cache["token"] = data["access_token"]
+    _lumanu_token_cache["expires_at"] = time.time() + data["expires_in"]
+    return _lumanu_token_cache["token"]
+
+async def _lumanu_get(path: str, params: dict = None) -> dict:
+    token = await _lumanu_token()
+    async with httpx.AsyncClient() as c:
+        r = await c.get(f"{config.LUMANU_API_BASE}{path}",
+            headers={"Authorization": f"Bearer {token}"}, params=params or {}, timeout=20)
+        r.raise_for_status()
+        return r.json()
+
+async def _lumanu_post(path: str, body: dict) -> dict:
+    token = await _lumanu_token()
+    async with httpx.AsyncClient() as c:
+        r = await c.post(f"{config.LUMANU_API_BASE}{path}",
+            headers={"Authorization": f"Bearer {token}"}, json=body, timeout=20)
+        r.raise_for_status()
+        return r.json()
+
+async def _lumanu_all_payables() -> list:
+    now = time.time()
+    if _lumanu_payables_cache["data"] is not None and now - _lumanu_payables_cache["at"] < _LUMANU_CACHE_TTL:
+        return _lumanu_payables_cache["data"]
+    out, offset, limit = [], 0, 100
+    while True:
+        data = await _lumanu_get("/payable", {"workspace_id": config.LUMANU_WORKSPACE_ID, "limit": limit, "offset": offset})
+        batch = data.get("data", [])
+        out.extend(batch)
+        offset += limit
+        if offset >= data.get("total", 0) or not batch:
+            break
+    _lumanu_payables_cache["data"] = out
+    _lumanu_payables_cache["at"] = now
+    return out
+
+@app.get("/api/lumanu/payables")
+async def get_lumanu_payables():
+    if not config.LUMANU_CLIENT_ID:
+        return []
+    client_row = _clients_cache.get(current_client.get(), {})
+    display_name = (client_row.get("display_name") or current_client.get()).lower()
+    influencers = await sb_get("paid_influencers",
+        f"?client=eq.{current_client.get()}&select=name,ig_handle,email")
+    emails  = {i["email"].lower() for i in influencers if i.get("email")}
+    handles = {i["ig_handle"].lower().lstrip("@") for i in influencers if i.get("ig_handle")}
+    try:
+        payables = await _lumanu_all_payables()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Lumanu API error: {e}")
+    matched = []
+    for p in payables:
+        desc = (p.get("description") or "").lower()
+        vemail = (p.get("vendor_email") or "").lower()
+        if display_name in desc or vemail in emails or any(h and h in desc for h in handles):
+            matched.append({
+                "id":              p.get("id"),
+                "description":     p.get("description"),
+                "amount":          (p.get("amount") or 0) / 100,
+                "vendor_email":    p.get("vendor_email"),
+                "vendor_status":   p.get("vendor_status"),
+                "status":          p.get("status"),
+                "payable_status":  p.get("payable_status"),
+                "due_date":        p.get("due_date"),
+                "invoice_number":  p.get("invoice_number"),
+            })
+    matched.sort(key=lambda x: x.get("due_date") or "", reverse=True)
+    return matched
+
+@app.get("/api/lumanu/payables/{id}/invoice")
+async def get_lumanu_invoice(id: str):
+    try:
+        return await _lumanu_get(f"/payable/{id}/invoice-pdf")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Lumanu API error: {e}")
+
+class CreateLumanuPayableBody(BaseModel):
+    payment_status_id: int
+    password: Optional[str] = None
+
+@app.post("/api/lumanu/payables/create")
+async def create_lumanu_payable(body: CreateLumanuPayableBody):
+    check_auth(body.password)
+    if not config.LUMANU_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Lumanu is not configured on this deployment.")
+
+    client_row = _clients_cache.get(current_client.get(), {})
+    gl_account = client_row.get("lumanu_gl_account")
+    if not gl_account:
+        raise HTTPException(status_code=400,
+            detail="GL Account isn't set up for this client yet — ask whoever manages QuickBooks for the right value.")
+
+    rows = await sb_get("payment_status", f"?id=eq.{body.payment_status_id}")
+    if not rows:
+        raise HTTPException(status_code=404, detail="Payment Status entry not found.")
+    row = rows[0]
+    if row.get("lumanu_payable_id"):
+        raise HTTPException(status_code=400, detail="Already sent to Lumanu.")
+    if not row.get("agreed_rate"):
+        raise HTTPException(status_code=400, detail="Set an Agreed Rate before sending to Lumanu.")
+    if not row.get("payment_due_date"):
+        raise HTTPException(status_code=400, detail="Set a Payment Due date before sending to Lumanu.")
+
+    inf_rows = await sb_get("paid_influencers", f"?id=eq.{row['influencer_id']}")
+    inf = inf_rows[0] if inf_rows else {}
+    email = (inf.get("email") or "").strip()
+    if not email:
+        raise HTTPException(status_code=400,
+            detail=f"{inf.get('name') or 'This creator'} has no email on file — add one in the Master List first.")
+
+    creator_name = inf.get("name") or inf.get("ig_handle") or "Creator"
+    description = f"{client_row.get('display_name') or current_client.get()} — {creator_name} — {row.get('deliverables') or 'Influencer payment'}"
+
+    payload = {
+        "workspace_id": config.LUMANU_WORKSPACE_ID,
+        "payee_email":  email,
+        "amount":       int(round(float(row["agreed_rate"]) * 100)),
+        "description":  description,
+        "due_date":     row["payment_due_date"],
+        "custom_fields": [
+            {"label": "Invoice Date", "type": "local_date", "value": time.strftime("%Y-%m-%d"),
+             "policy_id": config.LUMANU_INVOICE_DATE_POLICY_ID},
+            {"label": "GL Accounts", "type": "text", "value": gl_account,
+             "policy_id": config.LUMANU_GL_ACCOUNT_POLICY_ID},
+        ],
+    }
+    try:
+        created = await _lumanu_post("/payable", payload)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Lumanu API error: {e}")
+
+    payable_id = created.get("id")
+    if payable_id:
+        await sb_patch("payment_status", body.payment_status_id, {"lumanu_payable_id": payable_id})
+    _lumanu_payables_cache["data"] = None  # force a fresh fetch so it shows immediately
+
+    return {"ok": True, "lumanu_payable_id": payable_id}
 
 # ── Budget Tracker (existing MadeGood Supabase) ───────────────────────────────
 @app.get("/api/budget")

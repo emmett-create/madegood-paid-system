@@ -63,6 +63,7 @@
             <select id="ml-filter-gender" class="filter-sel"><option value="">All genders</option><option>Female</option><option>Male</option><option>Non-binary</option></select>
             <select id="ml-filter-campaign" class="filter-sel"><option value="">All campaigns</option></select>
             <button class="btn-sec" id="btn-manage-campaigns" title="Add or remove campaign options">Manage Campaigns</button>
+            <button class="btn-sec" id="btn-import-sheet" title="Bring in creators from an old spreadsheet">Import from Spreadsheet</button>
             <button class="btn-pri" id="btn-add-influencer">+ Add Creator</button>
           </div>
         </div>
@@ -113,7 +114,7 @@
               <option value="">All statuses</option>
               <option>Not Outreached</option><option>Outreached</option>
               <option>Followed Up 1x</option><option>Followed Up 2x</option>
-              <option>Interested</option><option>Passed</option>
+              <option>Confirmed</option><option>Passed</option>
               <option>Not Responsive</option><option>Conflicted Out</option>
             </select>
           </div>
@@ -341,16 +342,18 @@
                 <th>Content V1</th>
                 <th>Caption V1</th>
                 <th>A8 Feedback V1</th>
+                <th class="sys-col">LEMON Feedback V1</th>
                 <th style="background:rgba(202,1,0,.08)">Client Feedback V1</th>
                 <th>Content V2</th>
                 <th>Caption V2</th>
                 <th>A8 Feedback V2</th>
+                <th class="sys-col">LEMON Feedback V2</th>
                 <th style="background:rgba(202,1,0,.08)">Client Feedback V2</th>
                 <th>Approved</th>
                 <th></th>
               </tr>
             </thead>
-            <tbody id="cr-body"><tr><td colspan="27" class="empty-cell">Loading…</td></tr></tbody>
+            <tbody id="cr-body"><tr><td colspan="29" class="empty-cell">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -448,10 +451,31 @@
                 <th>Invoice</th>
                 <th>QuickBooks</th>
                 <th>Status</th>
+                <th>Lumanu</th>
                 <th></th>
               </tr>
             </thead>
-            <tbody id="pay-body"><tr><td colspan="12" class="empty-cell">Loading…</td></tr></tbody>
+            <tbody id="pay-body"><tr><td colspan="13" class="empty-cell">Loading…</td></tr></tbody>
+          </table>
+        </div>
+
+        <!-- Lumanu (read-only) -->
+        <div class="panel-header" style="margin-top:28px">
+          <h2>🔗 Lumanu Payments <span id="lumanu-count" style="color:var(--dim);font-weight:400;font-size:13px"></span></h2>
+        </div>
+        <div class="table-wrap">
+          <table class="tbl" id="lumanu-table">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Vendor</th>
+                <th>Amount</th>
+                <th>Due Date</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="lumanu-body"><tr><td colspan="6" class="empty-cell">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
