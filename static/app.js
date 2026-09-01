@@ -3300,16 +3300,42 @@ window.updatePayField = async (id, field, val) => {
 };
 
 $("pay-filter")?.addEventListener("change", loadPayments);
-$("btn-add-pay").addEventListener("click", ()=>openPayModal(null));
+$("btn-add-pay").addEventListener("click", async () => {
+  // getInfluencers()/paid_plan fetches below can take a few seconds on a cold
+  // Render instance — without this, the button looked broken (no visible
+  // response) until the fetch finally resolved.
+  const btn = $("btn-add-pay");
+  btn.disabled = true; const original = btn.textContent; btn.textContent = "Loading…";
+  try {
+    await openPayModal(null);
+  } catch (e) {
+    alert(e.message || "Couldn't open the Add Payment form.");
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
+});
 
 async function openPayModal(existing) {
-  await getInfluencers();
+  const [, plans] = await Promise.all([getInfluencers(), apiGet("/api/paid_plan")]);
   const isEdit = !!existing;
   const e = existing || {};
+  const eligible = allInfluencers.filter(i=>i.in_paid_plan);
+  const planByInfId = {};
+  (plans||[]).forEach(p => { if (p.influencer_id != null) planByInfId[p.influencer_id] = p; });
+
+  const fillFromCreator = () => {
+    const infId = parseInt($("payf-inf").value);
+    const inf = eligible.find(i => i.id === infId);
+    const plan = planByInfId[infId];
+    const rate = (inf && inf.landed_rate != null) ? inf.landed_rate : (plan ? plan.accepted_offer : null);
+    $("payf-rate").value = rate != null ? rate : "";
+    $("payf-del").value = ppDeliverableSummary(plan) || "";
+  };
+
   openModal(isEdit?"Edit Payment":"Add Payment", `
     <div class="form-grid-2">
       <div class="fld"><label>Creator</label>
-        <select id="payf-inf">${allInfluencers.filter(i=>i.in_paid_plan).map(i=>`<option value="${i.id}" ${e.influencer_id===i.id?"selected":""}>${esc(i.name||i.ig_handle)}</option>`).join("")}</select>
+        <select id="payf-inf">${eligible.map(i=>`<option value="${i.id}" ${e.influencer_id===i.id?"selected":""}>${esc(i.name||i.ig_handle)}</option>`).join("")}</select>
       </div>
       <div class="fld"><label>Agreed Rate ($)</label><input type="number" id="payf-rate" value="${e.agreed_rate||""}"></div>
       <div class="fld"><label>Deliverables</label><input id="payf-del" value="${esc(e.deliverables||"")}"></div>
@@ -3332,6 +3358,9 @@ async function openPayModal(existing) {
     else await apiPost("/api/payment_status", payload);
     closeModal(); loadPayments();
   });
+
+  $("payf-inf").addEventListener("change", fillFromCreator);
+  if (!isEdit) fillFromCreator();
 }
 
 async function loadLumanuPayables() {
