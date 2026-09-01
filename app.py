@@ -1579,12 +1579,12 @@ async def import_execute(body: ImportExecuteBody):
 
     return result
 
-# ── Lumanu (read-only payables sync) ──────────────────────────────────────────
+# ── Lumanu ─────────────────────────────────────────────────────────────────────
 # Agency 8 has one Lumanu workspace that pays every client's creators. There's
 # no per-client field on a payable, so a client's payables are found by matching
 # the client's display name / creator emails / IG handles against each payable's
-# description and vendor_email. Read-only: never creates, approves, or funds
-# anything in Lumanu — just surfaces what's already there.
+# description and vendor_email. Creates payables (draft) and approves/unapproves
+# them; funding (the step that actually moves money) is not built yet.
 _lumanu_token_cache = {"token": None, "expires_at": 0}
 _lumanu_payables_cache = {"data": None, "at": 0}
 _LUMANU_CACHE_TTL = 60
@@ -1738,6 +1738,29 @@ async def create_lumanu_payable(body: CreateLumanuPayableBody):
     _lumanu_payables_cache["data"] = None  # force a fresh fetch so it shows immediately
 
     return {"ok": True, "lumanu_payable_id": payable_id}
+
+class LumanuActionBody(BaseModel):
+    password: Optional[str] = None
+
+@app.post("/api/lumanu/payables/{id}/approve")
+async def approve_lumanu_payable(id: str, body: LumanuActionBody):
+    check_auth(body.password)
+    try:
+        result = await _lumanu_post(f"/payable/{id}/approve", {})
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Lumanu API error: {e}")
+    _lumanu_payables_cache["data"] = None
+    return result
+
+@app.post("/api/lumanu/payables/{id}/unapprove")
+async def unapprove_lumanu_payable(id: str, body: LumanuActionBody):
+    check_auth(body.password)
+    try:
+        result = await _lumanu_post(f"/payable/{id}/unapprove", {})
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Lumanu API error: {e}")
+    _lumanu_payables_cache["data"] = None
+    return result
 
 # ── Budget Tracker (existing MadeGood Supabase) ───────────────────────────────
 @app.get("/api/budget")

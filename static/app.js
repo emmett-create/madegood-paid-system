@@ -3381,13 +3381,22 @@ async function loadLumanuPayables() {
   }
   const badgeCls = s => s === "paid" ? "badge-locked" : s === "approved" ? "badge-offer" : s === "canceled" ? "badge-ext" : "badge-negotiations";
   const lumanuDate = s => s ? new Date(s).toLocaleDateString("en-US", {month:"short",day:"numeric",year:"numeric"}) : "—";
+  // Approval checkpoint (Lou's workflow, step 3): draft payables need a
+  // deliberate Approve click before they're eligible for payment; approved
+  // ones can be walked back with Unapprove. Anything past that (will_pay,
+  // paid, canceled) is a terminal/in-flight state with no action here.
+  const approvalBtn = p => {
+    if (p.status === "draft") return `<button class="btn-icon btn-lumanu-approve" data-id="${p.id}">Approve</button>`;
+    if (p.status === "approved") return `<button class="btn-icon btn-lumanu-unapprove" data-id="${p.id}">Unapprove</button>`;
+    return "";
+  };
   body.innerHTML = data.map(p => `<tr>
     <td>${esc(p.description || "")}</td>
     <td>${esc(p.vendor_email || "")}</td>
     <td>${fmtD(p.amount)}</td>
     <td>${lumanuDate(p.due_date)}</td>
     <td><span class="badge ${badgeCls(p.status)}">${esc(p.status || "")}</span></td>
-    <td><button class="btn-icon btn-lumanu-invoice" data-id="${p.id}">Invoice</button></td>
+    <td>${approvalBtn(p)} <button class="btn-icon btn-lumanu-invoice" data-id="${p.id}">Invoice</button></td>
   </tr>`).join("");
   document.querySelectorAll(".btn-lumanu-invoice").forEach(b =>
     b.addEventListener("click", async () => {
@@ -3397,6 +3406,30 @@ async function loadLumanuPayables() {
         if (url) window.open(url, "_blank");
       } catch { alert("Couldn't load invoice."); }
       b.disabled = false; b.textContent = "Invoice";
+    })
+  );
+  document.querySelectorAll(".btn-lumanu-approve").forEach(b =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Approve this payable in Lumanu? This moves it toward payment.")) return;
+      b.disabled = true; b.textContent = "…";
+      try {
+        await apiPost(`/api/lumanu/payables/${b.dataset.id}/approve`, {});
+        loadLumanuPayables();
+      } catch (e) {
+        alert(e.message || "Couldn't approve."); b.disabled = false; b.textContent = "Approve";
+      }
+    })
+  );
+  document.querySelectorAll(".btn-lumanu-unapprove").forEach(b =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Unapprove this payable?")) return;
+      b.disabled = true; b.textContent = "…";
+      try {
+        await apiPost(`/api/lumanu/payables/${b.dataset.id}/unapprove`, {});
+        loadLumanuPayables();
+      } catch (e) {
+        alert(e.message || "Couldn't unapprove."); b.disabled = false; b.textContent = "Unapprove";
+      }
     })
   );
 }
