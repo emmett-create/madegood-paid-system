@@ -3155,7 +3155,15 @@ async function openGLModal(existing) {
     </div>
     <div class="form-grid-2">
       <div class="fld"><label>Contract</label><input id="glf-contract" value="${esc(e.contract||"")}" placeholder="Contract reference…"></div>
-      <div class="fld"><label>Usage</label><input id="glf-usage" value="${esc(e.usage||"")}" placeholder="e.g. Organic (30 days)"></div>
+      <div class="fld"><label>Usage</label>
+        <select id="glf-usage">
+          <option value="">—</option>
+          <option ${e.usage==="Organic (30 days)"?"selected":""}>Organic (30 days)</option>
+          <option ${e.usage==="Baked in Paid (30 days)"?"selected":""}>Baked in Paid (30 days)</option>
+          <option ${e.usage==="Pre-Negotiated Paid (30 days)"?"selected":""}>Pre-Negotiated Paid (30 days)</option>
+          <option ${e.usage==="Other"?"selected":""}>Other</option>
+        </select>
+      </div>
     </div>
     <div class="form-grid-2">
       <div class="fld"><label>Usage Term Start</label><input type="date" id="glf-start" value="${e.usage_term_start||""}"></div>
@@ -3233,7 +3241,9 @@ async function openLivePostModal(existing) {
         <select id="lpf-inf">${allInfluencers.filter(i=>i.in_paid_plan).map(i=>`<option value="${i.id}" ${e.influencer_id===i.id?"selected":""}>${esc(i.name||i.ig_handle)}</option>`).join("")}</select>
       </div>
       <div class="fld"><label>Live Date</label><input type="date" id="lpf-date" value="${e.live_date||""}"></div>
-      <div class="fld"><label>Campaign</label><input id="lpf-campaign" value="${esc(e.campaign||"")}"></div>
+      <div class="fld"><label>Campaign</label>
+        <input id="lpf-campaign" list="campaign-datalist" value="${esc(e.campaign||"")}" placeholder="Type or select…" autocomplete="off">
+      </div>
       <div class="fld"><label>Deliverable</label>
         <select id="lpf-del">
           <option value="">—</option>
