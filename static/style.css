@@ -172,7 +172,10 @@ input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.7); curso
 input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 
 /* ── Auto-expanding textarea ── */
-textarea.auto-expand { resize: none; overflow: hidden; min-height: 26px; line-height: 1.35; vertical-align: top; padding-top: 4px; }
+/* resize:vertical (not none) so long feedback/caption text can still be
+   drag-expanded by hand, same as client view — auto-expand-on-type still
+   runs on top of that, it just no longer forbids a manual drag first. */
+textarea.auto-expand { resize: vertical; overflow: hidden; min-height: 26px; line-height: 1.35; vertical-align: top; padding-top: 4px; }
 
 /* ── Calendar day selected state ── */
 .cal-day.selected { border-color: var(--blue); background: rgba(88,166,255,.08); }

@@ -2528,6 +2528,37 @@ function openPostDetailsModal(row, plan) {
   });
 }
 
+// Usage & Collab for a single Content Review row — same USAGE_OPTS checkbox
+// pattern as openPostDetailsModal above, scoped to one post instead of a
+// creator's whole deliverable set. Saves via /api/content_review/{id}/usage,
+// which writes both content_review.usage (what this page displays) and the
+// matching paid_plan.post_details entry (what Outreach's modal displays).
+function openCRUsageModal(row) {
+  const currentUsage = row.usage ? row.usage.split(", ").filter(Boolean) : [];
+  const bodyHtml = `
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+      ${USAGE_OPTS.map(u => `
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">
+          <input type="checkbox" class="cru-usage" value="${esc(u)}" ${currentUsage.includes(u) ? "checked" : ""}>
+          ${esc(u)}
+        </label>`).join("")}
+    </div>
+    <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;font-weight:600;color:var(--purple,#6b3fa0)">
+      <input type="checkbox" id="cru-collab" ${row.is_collab ? "checked" : ""}>
+      Collab Post
+    </label>
+  `;
+  openModal(`Usage & Collab — ${esc(row.deliverable_type || "")}`, bodyHtml, async () => {
+    const usage = [...document.querySelectorAll(".cru-usage:checked")].map(cb => cb.value);
+    const is_collab = $("cru-collab").checked;
+    await apiPatch(`/api/content_review/${row.id}/usage`, {usage, is_collab});
+    row.usage = usage.join(", ") || null;
+    row.is_collab = is_collab;
+    closeModal();
+    loadContentReview();
+  });
+}
+
 // Helper: auto-create N Content Review entries per deliverable type when Locked
 async function autoCreateContentReviewEntries(influencerId, plan) {
   const existing = await apiGet("/api/content_review");
@@ -2618,11 +2649,11 @@ async function loadContentReview() {
       <td></td>
       <td style="color:var(--dim);font-size:13px;padding-left:8px;white-space:nowrap">↳</td>
       <td style="white-space:nowrap;font-weight:600;font-size:12px">${esc(r.deliverable_type||"—")}</td>
-      <td style="text-align:center">
+      <td style="text-align:center;cursor:pointer" class="btn-edit-cr-usage" data-id="${r.id}" title="Edit usage &amp; collab">
         ${r.is_collab ? `<span class="badge badge-int" style="background:#ede8f5;color:#6b3fa0;border:1px solid #c5b0e0">Collab</span>` : `<span style="color:var(--dim);font-size:11px">—</span>`}
       </td>
-      <td style="font-size:11px;color:var(--dim);min-width:160px;white-space:nowrap">
-        ${r.usage ? r.usage.split(", ").map(u => `<div style="padding:1px 0">${esc(u)}</div>`).join("") : "—"}
+      <td style="font-size:11px;color:var(--dim);min-width:160px;white-space:nowrap;cursor:pointer" class="btn-edit-cr-usage" data-id="${r.id}" title="Edit usage &amp; collab">
+        ${r.usage ? r.usage.split(", ").map(u => `<div style="padding:1px 0">${esc(u)}</div>`).join("") : `<span style="text-decoration:underline dotted">— set usage</span>`}
       </td>
       <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:110px"></td>
       <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:110px"></td>
@@ -2693,6 +2724,15 @@ async function loadContentReview() {
   document.querySelectorAll(".cr-approved-chk").forEach(cb =>
     cb.addEventListener("change", async () => {
       await apiPatch(`/api/content_review/${cb.dataset.id}`, {approved_by_client: cb.checked});
+    })
+  );
+
+  // Usage & Collab — editable here, kept in sync with paid_plan.post_details
+  // (the same data the Outreach tab's "Usage & Collab" modal reads/writes)
+  document.querySelectorAll(".btn-edit-cr-usage").forEach(el =>
+    el.addEventListener("click", () => {
+      const r = data.find(x => String(x.id) === el.dataset.id);
+      if (r) openCRUsageModal(r);
     })
   );
 

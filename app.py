@@ -7,6 +7,7 @@ import re
 import json
 import time
 import httpx
+import urllib.parse
 from anthropic import Anthropic
 from contextvars import ContextVar
 from fastapi import FastAPI, HTTPException, Depends, Request
@@ -914,6 +915,68 @@ async def update_client_content_review(id: int, req: dict):
 async def update_content_review(id: int, req: dict):
     check_auth(req.pop("password", None))
     return await sb_patch("content_review", id, req)
+
+CR_TYPE_KEY = {"IG Feed": "ig_feed", "IG Reel": "ig_reel", "IG Story": "ig_story", "TikTok": "tt"}
+
+class ContentReviewUsageBody(BaseModel):
+    usage: list = []
+    is_collab: Optional[bool] = None
+    password: Optional[str] = None
+
+@app.patch("/api/content_review/{id}/usage")
+async def update_content_review_usage(id: int, body: ContentReviewUsageBody):
+    """Usage/collab on a Content Review row is a one-time snapshot taken from
+    paid_plan.post_details when the row is created (see get_content_review's
+    backfill) — editing it here only, via the generic PATCH above, would go
+    stale immediately since the Outreach tab's "Usage & Collab" modal reads
+    and writes post_details directly, not content_review. This keeps both in
+    sync: it writes content_review.usage for display here, AND finds this
+    row's matching post_details[key][idx] entry — using the exact same
+    (handle, deliverable_type) row-position the GET backfill already relies
+    on — and updates that too, so the Outreach modal reflects the change."""
+    check_auth(body.password)
+    rows = await sb_get("content_review", f"?id=eq.{id}")
+    if not rows:
+        raise HTTPException(status_code=404, detail="Content Review row not found.")
+    row = rows[0]
+
+    usage_str = ", ".join(body.usage) if body.usage else None
+    patch = {"usage": usage_str}
+    if body.is_collab is not None:
+        patch["is_collab"] = body.is_collab
+    await sb_patch("content_review", id, patch)
+
+    inf_rows = await sb_get("paid_influencers", f"?id=eq.{row['influencer_id']}&select=ig_handle")
+    handle = (inf_rows[0].get("ig_handle") or "").strip().lower() if inf_rows else ""
+    key = CR_TYPE_KEY.get(row.get("deliverable_type", ""), "")
+    if not handle or not key:
+        return {"ok": True, "post_details_synced": False}
+
+    del_type_q = urllib.parse.quote(row.get("deliverable_type", ""))
+    siblings = await sb_get("content_review",
+        f"?client=eq.{current_client.get()}&influencer_id=eq.{row['influencer_id']}"
+        f"&deliverable_type=eq.{del_type_q}&order=id.asc&select=id")
+    idx = next((i for i, s in enumerate(siblings) if s["id"] == id), None)
+    if idx is None:
+        return {"ok": True, "post_details_synced": False}
+
+    all_infs = await sb_get("paid_influencers", f"?client=eq.{current_client.get()}&select=id,ig_handle")
+    id_to_handle = {i["id"]: (i.get("ig_handle") or "").strip().lower() for i in all_infs}
+    plans = await sb_get("paid_plan", f"?client=eq.{current_client.get()}")
+    plan = _best_plan(plans, id_to_handle).get(handle)
+    if not plan:
+        return {"ok": True, "post_details_synced": False}
+
+    pd = plan.get("post_details") or {}
+    posts = list(pd.get(key, []))
+    while len(posts) <= idx:
+        posts.append({"usage": [], "is_collab": False})
+    posts[idx] = {**posts[idx], "usage": body.usage}
+    if body.is_collab is not None:
+        posts[idx]["is_collab"] = body.is_collab
+    pd[key] = posts
+    await sb_patch("paid_plan", plan["id"], {"post_details": pd})
+    return {"ok": True, "post_details_synced": True}
 
 @app.delete("/api/content_review/{id}")
 async def delete_content_review(id: int, password: str = ""):
