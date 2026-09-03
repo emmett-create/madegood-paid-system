@@ -2646,7 +2646,7 @@ async function loadContentReview() {
         </select>
       </td>
       <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-      <td></td>
+      <td><input class="cr-campaign" list="campaign-datalist" autocomplete="off" data-id="${r.id}" value="${esc(r.campaign||"")}" placeholder="e.g. Month 1" style="${iS};min-width:100px"></td>
       <td style="color:var(--dim);font-size:13px;padding-left:8px;white-space:nowrap">↳</td>
       <td style="white-space:nowrap;font-weight:600;font-size:12px">${esc(r.deliverable_type||"—")}</td>
       <td style="text-align:center;cursor:pointer" class="btn-edit-cr-usage" data-id="${r.id}" title="Edit usage &amp; collab">
@@ -2657,28 +2657,28 @@ async function loadContentReview() {
       </td>
       <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:110px"></td>
       <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:110px"></td>
-      <td><textarea class="cr-concept auto-expand" data-id="${r.id}" placeholder="Concept" style="${iS};min-width:110px">${esc(r.concept||"")}</textarea></td>
-      <td><textarea class="cr-concept-fbk auto-expand" data-id="${r.id}" placeholder="Concept feedback" style="${iS};min-width:110px">${esc(r.concept_feedback||"")}</textarea></td>
+      <td><textarea class="cr-concept auto-expand" data-id="${r.id}" placeholder="Concept" style="${iS};min-width:180px">${esc(r.concept||"")}</textarea></td>
+      <td><textarea class="cr-concept-fbk auto-expand" data-id="${r.id}" placeholder="Concept feedback" style="${iS};min-width:180px">${esc(r.concept_feedback||"")}</textarea></td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
           <input class="cr-cv1" data-id="${r.id}" value="${esc(r.content_v1||"")}" placeholder="Link…" style="${iS};min-width:80px">
           ${r.content_v1 ? `<a href="${esc(r.content_v1)}" target="_blank" style="color:var(--red);font-size:12px;flex-shrink:0">↗</a>` : ""}
         </div>
       </td>
-      <td><textarea class="cr-cap1 auto-expand" data-id="${r.id}" placeholder="Caption" style="${iS};min-width:90px">${esc(r.caption_v1||"")}</textarea></td>
-      <td><textarea class="cr-af1 auto-expand" data-id="${r.id}" placeholder="A8 notes" style="${iS};min-width:90px">${esc(r.a8_feedback_v1||"")}</textarea></td>
-      <td class="sys-col"><textarea class="cr-lf1 auto-expand" data-id="${r.id}" placeholder="LEMON feedback" style="${iS};min-width:100px">${esc(r.lemon_feedback_v1||"")}</textarea></td>
-      <td style="background:rgba(202,1,0,.04)"><textarea class="cr-cf1 auto-expand" data-id="${r.id}" placeholder="Client feedback" style="${iS};min-width:110px">${esc(r.client_feedback_v1||"")}</textarea></td>
+      <td><textarea class="cr-cap1 auto-expand" data-id="${r.id}" placeholder="Caption" style="${iS};min-width:160px">${esc(r.caption_v1||"")}</textarea></td>
+      <td><textarea class="cr-af1 auto-expand" data-id="${r.id}" placeholder="A8 notes" style="${iS};min-width:160px">${esc(r.a8_feedback_v1||"")}</textarea></td>
+      <td class="sys-col"><textarea class="cr-lf1 auto-expand" data-id="${r.id}" placeholder="LEMON feedback" style="${iS};min-width:170px">${esc(r.lemon_feedback_v1||"")}</textarea></td>
+      <td style="background:rgba(202,1,0,.04)"><textarea class="cr-cf1 auto-expand" data-id="${r.id}" placeholder="Client feedback" style="${iS};min-width:180px">${esc(r.client_feedback_v1||"")}</textarea></td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
           <input class="cr-cv2" data-id="${r.id}" value="${esc(r.content_v2||"")}" placeholder="Link…" style="${iS};min-width:80px">
           ${r.content_v2 ? `<a href="${esc(r.content_v2)}" target="_blank" style="color:var(--red);font-size:12px;flex-shrink:0">↗</a>` : ""}
         </div>
       </td>
-      <td><textarea class="cr-cap2 auto-expand" data-id="${r.id}" placeholder="Caption" style="${iS};min-width:90px">${esc(r.caption_v2||"")}</textarea></td>
-      <td><textarea class="cr-af2 auto-expand" data-id="${r.id}" placeholder="A8 notes" style="${iS};min-width:90px">${esc(r.a8_feedback_v2||"")}</textarea></td>
-      <td class="sys-col"><textarea class="cr-lf2 auto-expand" data-id="${r.id}" placeholder="LEMON feedback" style="${iS};min-width:100px">${esc(r.lemon_feedback_v2||"")}</textarea></td>
-      <td style="background:rgba(202,1,0,.04)"><textarea class="cr-cf2 auto-expand" data-id="${r.id}" placeholder="Client feedback" style="${iS};min-width:110px">${esc(r.client_feedback_v2||"")}</textarea></td>
+      <td><textarea class="cr-cap2 auto-expand" data-id="${r.id}" placeholder="Caption" style="${iS};min-width:160px">${esc(r.caption_v2||"")}</textarea></td>
+      <td><textarea class="cr-af2 auto-expand" data-id="${r.id}" placeholder="A8 notes" style="${iS};min-width:160px">${esc(r.a8_feedback_v2||"")}</textarea></td>
+      <td class="sys-col"><textarea class="cr-lf2 auto-expand" data-id="${r.id}" placeholder="LEMON feedback" style="${iS};min-width:170px">${esc(r.lemon_feedback_v2||"")}</textarea></td>
+      <td style="background:rgba(202,1,0,.04)"><textarea class="cr-cf2 auto-expand" data-id="${r.id}" placeholder="Client feedback" style="${iS};min-width:180px">${esc(r.client_feedback_v2||"")}</textarea></td>
       <td style="text-align:center">
         <input type="checkbox" class="cr-approved-chk" data-id="${r.id}" data-inf-id="${r.influencer_id}" data-live="${r.live_date||""}" data-due="${r.content_due_date||""}" data-del="${esc(r.deliverable_type||"")}" ${r.approved_by_client?"checked":""} style="accent-color:var(--green);width:16px;height:16px;cursor:pointer">
       </td>
@@ -2696,6 +2696,7 @@ async function loadContentReview() {
       el.addEventListener(evt, () => apiPatch(`/api/content_review/${el.dataset.id}`, {[field]: el.value || null}))
     );
   wire("cr-status",      "status",            "change");
+  wire("cr-campaign",    "campaign",          "blur");
   // Due + live date wires — Content Calendar reads these fields directly, no sync needed
   document.querySelectorAll(".cr-due").forEach(el =>
     el.addEventListener("change", async () => {

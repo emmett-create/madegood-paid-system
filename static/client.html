@@ -15,10 +15,10 @@
     .gate-err { color:var(--red);font-size:12px; }
     .hidden { display:none!important; }
     .header { background:#1A0000;border-bottom:2px solid var(--red);position:sticky;top:0;z-index:100; }
-    .header-inner { max-width:1100px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:14px; }
+    .header-inner { max-width:1800px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:14px; }
     .header-sub { color:#F8F5ED;opacity:.6;font-size:12px; }
     .logo-img { height:26px; }
-    .container { max-width:1100px;margin:0 auto;padding:24px; }
+    .container { max-width:1800px;margin:0 auto;padding:24px; }
     h2 { font-size:18px;font-weight:700;margin-bottom:4px; }
     .sub { color:var(--dim);font-size:12px;margin-bottom:20px; }
     .tbl-wrap { background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow-x:auto; }
@@ -462,13 +462,13 @@ function renderContentReview() {
       <td style="font-size:11px">${esc(r.usage||"—")}</td>
       <td style="font-size:11px;white-space:nowrap">${fmtDate(r.content_due_date)}</td>
       <td style="font-size:11px;white-space:nowrap">${fmtDate(r.live_date)}</td>
-      <td style="font-size:11px;max-width:160px">${linkify(r.concept||"—")}</td>
+      <td style="font-size:11px;max-width:220px">${linkify(r.concept||"—")}</td>
       <td style="font-size:11px">${r.content_v1 ? `<a href="${esc(r.content_v1)}" target="_blank">View ↗</a>` : "—"}</td>
-      <td style="font-size:11px;max-width:140px">${linkify(r.caption_v1||"—")}</td>
-      <td><textarea class="cr-fb" data-id="${r.id}" data-field="client_feedback_v1" rows="2" style="${iS}" placeholder="Add feedback…">${esc(r.client_feedback_v1||"")}</textarea></td>
+      <td style="font-size:11px;max-width:200px">${linkify(r.caption_v1||"—")}</td>
+      <td style="min-width:180px"><textarea class="cr-fb" data-id="${r.id}" data-field="client_feedback_v1" rows="2" style="${iS}" placeholder="Add feedback…">${esc(r.client_feedback_v1||"")}</textarea></td>
       <td style="font-size:11px">${r.content_v2 ? `<a href="${esc(r.content_v2)}" target="_blank">View ↗</a>` : "—"}</td>
-      <td style="font-size:11px;max-width:140px">${linkify(r.caption_v2||"—")}</td>
-      <td><textarea class="cr-fb" data-id="${r.id}" data-field="client_feedback_v2" rows="2" style="${iS}" placeholder="Add feedback…">${esc(r.client_feedback_v2||"")}</textarea></td>
+      <td style="font-size:11px;max-width:200px">${linkify(r.caption_v2||"—")}</td>
+      <td style="min-width:180px"><textarea class="cr-fb" data-id="${r.id}" data-field="client_feedback_v2" rows="2" style="${iS}" placeholder="Add feedback…">${esc(r.client_feedback_v2||"")}</textarea></td>
       <td style="font-size:11px">${esc(r.status||"—")}</td>
     </tr>`;
   }).join("") : `<tr><td colspan="14" class="empty">No content yet.</td></tr>`;
