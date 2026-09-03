@@ -171,11 +171,13 @@ a:hover { text-decoration: underline; }
 input[type=date]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; opacity: .7; }
 input[type=date]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 
-/* ── Auto-expanding textarea ── */
-/* resize:vertical (not none) so long feedback/caption text can still be
-   drag-expanded by hand, same as client view — auto-expand-on-type still
-   runs on top of that, it just no longer forbids a manual drag first. */
-textarea.auto-expand { resize: vertical; overflow: hidden; min-height: 26px; line-height: 1.35; vertical-align: top; padding-top: 4px; }
+/* ── Drag-to-expand textarea (matches client view) ── */
+/* Manual resize only, same as client view — no grow-while-typing JS. A
+   taller default (was 26px) means long existing feedback/captions show a
+   few lines up front instead of needing a drag just to see anything, and
+   overflow:auto (was hidden) means text you haven't dragged to reveal yet
+   is still reachable via scroll instead of being silently clipped. */
+textarea.expand-drag { resize: vertical; overflow: auto; min-height: 60px; line-height: 1.4; vertical-align: top; padding-top: 4px; }
 
 /* ── Calendar day selected state ── */
 .cal-day.selected { border-color: var(--blue); background: rgba(88,166,255,.08); }

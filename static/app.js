@@ -1508,7 +1508,7 @@ function openInfluencerModal(existing) {
     </div>
     <div class="fld"><label>Audience Age Breakdown</label><input id="mf-age" value="${esc(e.audience_age||"")}"></div>
     <div class="fld"><label>ShopMy Conversion Data</label><input id="mf-shopmy" value="${esc(e.shopmy_data||"")}" placeholder="Average $ per Month" style="background:var(--panel);"></div>
-    <div class="fld"><label>Notes</label><textarea id="mf-ext-feedback" rows="2">${esc(e.external_feedback||"")}</textarea></div>
+    <div class="fld"><label>Notes</label><textarea id="mf-ext-feedback" class="expand-drag" rows="2">${esc(e.external_feedback||"")}</textarea></div>
   `, async () => {
     const igHandle  = $("mf-ig-handle").value.trim().replace(/^@/,"");
     const ttHandle  = $("mf-tt-handle").value.trim().replace(/^@/,"");
@@ -2017,7 +2017,7 @@ async function openPaidPlanModal(row) {
       <div class="fld"><label>A8 Counter ($)</label><input type="number" id="ppf-a8c" value="${e.a8_counter||""}"></div>
       <div class="fld"><label>Accepted Offer ($)</label><input type="number" id="ppf-accepted" value="${e.accepted_offer||""}"></div>
     </div>
-    <div class="fld" style="margin-top:8px"><label>Notes</label><textarea id="ppf-notes" rows="2">${esc(e.notes||"")}</textarea></div>
+    <div class="fld" style="margin-top:8px"><label>Notes</label><textarea id="ppf-notes" class="expand-drag" rows="2">${esc(e.notes||"")}</textarea></div>
     <div class="form-section">Estimated Cost — Live Calculator</div>
     <div id="ppf-calc-breakdown" style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;font-size:12px;line-height:2">
       <div style="display:flex;justify-content:space-between"><span style="color:var(--dim)">IG Reel</span><strong id="ppf-c-igr">—</strong></div>
@@ -2410,7 +2410,7 @@ $("btn-add-cal").addEventListener("click", async () => {
       <div class="fld"><label>IG In-Feed</label><input type="number" id="calf-feed" value="0" min="0"></div>
       <div class="fld"><label>TikTok Videos</label><input type="number" id="calf-tt" value="0" min="0"></div>
     </div>
-    <div class="fld"><label>Notes</label><textarea id="calf-notes" rows="2"></textarea></div>
+    <div class="fld"><label>Notes</label><textarea id="calf-notes" class="expand-drag" rows="2"></textarea></div>
   `, async () => {
     const qty = {
       ig_reel:  parseInt($("calf-reel").value)  || 0,
@@ -2657,28 +2657,28 @@ async function loadContentReview() {
       </td>
       <td><input type="date" class="cr-due" data-id="${r.id}" value="${r.content_due_date||""}" style="${iS};min-width:110px"></td>
       <td><input type="date" class="cr-live" data-id="${r.id}" value="${r.live_date||""}" style="${iS};min-width:110px"></td>
-      <td><textarea class="cr-concept auto-expand" data-id="${r.id}" placeholder="Concept" style="${iS};min-width:180px">${esc(r.concept||"")}</textarea></td>
-      <td><textarea class="cr-concept-fbk auto-expand" data-id="${r.id}" placeholder="Concept feedback" style="${iS};min-width:180px">${esc(r.concept_feedback||"")}</textarea></td>
+      <td><textarea class="cr-concept expand-drag" data-id="${r.id}" placeholder="Concept" style="${iS};min-width:180px">${esc(r.concept||"")}</textarea></td>
+      <td><textarea class="cr-concept-fbk expand-drag" data-id="${r.id}" placeholder="Concept feedback" style="${iS};min-width:180px">${esc(r.concept_feedback||"")}</textarea></td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
           <input class="cr-cv1" data-id="${r.id}" value="${esc(r.content_v1||"")}" placeholder="Link…" style="${iS};min-width:80px">
           ${r.content_v1 ? `<a href="${esc(r.content_v1)}" target="_blank" style="color:var(--red);font-size:12px;flex-shrink:0">↗</a>` : ""}
         </div>
       </td>
-      <td><textarea class="cr-cap1 auto-expand" data-id="${r.id}" placeholder="Caption" style="${iS};min-width:160px">${esc(r.caption_v1||"")}</textarea></td>
-      <td><textarea class="cr-af1 auto-expand" data-id="${r.id}" placeholder="A8 notes" style="${iS};min-width:160px">${esc(r.a8_feedback_v1||"")}</textarea></td>
-      <td class="sys-col"><textarea class="cr-lf1 auto-expand" data-id="${r.id}" placeholder="LEMON feedback" style="${iS};min-width:170px">${esc(r.lemon_feedback_v1||"")}</textarea></td>
-      <td style="background:rgba(202,1,0,.04)"><textarea class="cr-cf1 auto-expand" data-id="${r.id}" placeholder="Client feedback" style="${iS};min-width:180px">${esc(r.client_feedback_v1||"")}</textarea></td>
+      <td><textarea class="cr-cap1 expand-drag" data-id="${r.id}" placeholder="Caption" style="${iS};min-width:160px">${esc(r.caption_v1||"")}</textarea></td>
+      <td><textarea class="cr-af1 expand-drag" data-id="${r.id}" placeholder="A8 notes" style="${iS};min-width:160px">${esc(r.a8_feedback_v1||"")}</textarea></td>
+      <td class="sys-col"><textarea class="cr-lf1 expand-drag" data-id="${r.id}" placeholder="LEMON feedback" style="${iS};min-width:170px">${esc(r.lemon_feedback_v1||"")}</textarea></td>
+      <td style="background:rgba(202,1,0,.04)"><textarea class="cr-cf1 expand-drag" data-id="${r.id}" placeholder="Client feedback" style="${iS};min-width:180px">${esc(r.client_feedback_v1||"")}</textarea></td>
       <td>
         <div style="display:flex;align-items:center;gap:4px">
           <input class="cr-cv2" data-id="${r.id}" value="${esc(r.content_v2||"")}" placeholder="Link…" style="${iS};min-width:80px">
           ${r.content_v2 ? `<a href="${esc(r.content_v2)}" target="_blank" style="color:var(--red);font-size:12px;flex-shrink:0">↗</a>` : ""}
         </div>
       </td>
-      <td><textarea class="cr-cap2 auto-expand" data-id="${r.id}" placeholder="Caption" style="${iS};min-width:160px">${esc(r.caption_v2||"")}</textarea></td>
-      <td><textarea class="cr-af2 auto-expand" data-id="${r.id}" placeholder="A8 notes" style="${iS};min-width:160px">${esc(r.a8_feedback_v2||"")}</textarea></td>
-      <td class="sys-col"><textarea class="cr-lf2 auto-expand" data-id="${r.id}" placeholder="LEMON feedback" style="${iS};min-width:170px">${esc(r.lemon_feedback_v2||"")}</textarea></td>
-      <td style="background:rgba(202,1,0,.04)"><textarea class="cr-cf2 auto-expand" data-id="${r.id}" placeholder="Client feedback" style="${iS};min-width:180px">${esc(r.client_feedback_v2||"")}</textarea></td>
+      <td><textarea class="cr-cap2 expand-drag" data-id="${r.id}" placeholder="Caption" style="${iS};min-width:160px">${esc(r.caption_v2||"")}</textarea></td>
+      <td><textarea class="cr-af2 expand-drag" data-id="${r.id}" placeholder="A8 notes" style="${iS};min-width:160px">${esc(r.a8_feedback_v2||"")}</textarea></td>
+      <td class="sys-col"><textarea class="cr-lf2 expand-drag" data-id="${r.id}" placeholder="LEMON feedback" style="${iS};min-width:170px">${esc(r.lemon_feedback_v2||"")}</textarea></td>
+      <td style="background:rgba(202,1,0,.04)"><textarea class="cr-cf2 expand-drag" data-id="${r.id}" placeholder="Client feedback" style="${iS};min-width:180px">${esc(r.client_feedback_v2||"")}</textarea></td>
       <td style="text-align:center">
         <input type="checkbox" class="cr-approved-chk" data-id="${r.id}" data-inf-id="${r.influencer_id}" data-live="${r.live_date||""}" data-due="${r.content_due_date||""}" data-del="${esc(r.deliverable_type||"")}" ${r.approved_by_client?"checked":""} style="accent-color:var(--green);width:16px;height:16px;cursor:pointer">
       </td>
@@ -2736,13 +2736,6 @@ async function loadContentReview() {
       if (r) openCRUsageModal(r);
     })
   );
-
-  // Auto-expand textareas
-  document.querySelectorAll("textarea.auto-expand").forEach(el => {
-    const resize = () => { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; };
-    el.addEventListener("input", resize);
-    resize(); // size on load
-  });
 
   // + Add Deliverable button
   document.querySelectorAll(".btn-add-cr-del").forEach(b =>
@@ -3394,7 +3387,7 @@ async function openPayModal(existing) {
       <div class="fld"><label>Payment Date</label><input type="date" id="payf-date" value="${e.payment_date||""}"></div>
       <div class="fld"><label>Status</label><input id="payf-status" value="${esc(e.status||"")}"></div>
     </div>
-    <div class="fld"><label>Notes</label><textarea id="payf-notes" rows="2">${esc(e.notes||"")}</textarea></div>
+    <div class="fld"><label>Notes</label><textarea id="payf-notes" class="expand-drag" rows="2">${esc(e.notes||"")}</textarea></div>
   `, async ()=>{
     const payload = {
       influencer_id: parseInt($("payf-inf").value),
@@ -3544,7 +3537,7 @@ $("btn-add-budget").addEventListener("click", ()=>{
         <div class="fld"><label>Creator Handle</label><input id="bf-handle" placeholder="@username"></div>
         <div class="fld"><label>Description</label><input id="bf-desc"></div>
       </div>
-      <div class="fld"><label>Notes</label><textarea id="bf-notes" rows="2"></textarea></div>
+      <div class="fld"><label>Notes</label><textarea id="bf-notes" class="expand-drag" rows="2"></textarea></div>
     `, async ()=>{
       await apiPost("/api/budget", {
         date:            $("bf-date").value,

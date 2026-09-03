@@ -452,7 +452,7 @@ async function loadContentReview() {
 }
 
 function renderContentReview() {
-  const iS = "background:#F2EDE9;border:1px solid #DDD5CE;color:#1A0000;border-radius:5px;padding:5px 8px;font-size:12px;width:100%;min-height:32px;resize:vertical";
+  const iS = "background:#F2EDE9;border:1px solid #DDD5CE;color:#1A0000;border-radius:5px;padding:5px 8px;font-size:12px;width:100%;min-height:60px;resize:vertical";
   document.getElementById("cr-body").innerHTML = crRows.length ? crRows.map(r => {
     const inf = r.influencer || {};
     return `<tr>
